@@ -1,7 +1,8 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
+
 from routers import games, teams, players, injuries, news, predictions, rankings, chat, standings
 
 @asynccontextmanager
@@ -20,9 +21,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-    "http://localhost:5173",
-    "https://hoopiq-virid.vercel.app",
-],
+        "http://localhost:5173",
+        "https://hoopiq-virid.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,11 +41,20 @@ app.include_router(standings.router,   prefix="/standings",      tags=["Standing
 
 @app.get("/")
 async def root():
-    return {"message": "🏀 HoopIQ NBA Analytics API", "status": "running", "docs": "/docs"}
+    return {
+        "message": "🏀 HoopIQ NBA Analytics API",
+        "status": "running",
+        "docs": "/docs"
+    }
 
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
+# ✅ FIXED HEALTH ENDPOINT (supports GET + HEAD)
+@app.api_route("/health", methods=["GET", "HEAD"])
+async def health(request: Request):
+    return {
+        "status": "ok",
+        "service": "HoopIQ API",
+        "version": "1.0.0"
+    }
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
