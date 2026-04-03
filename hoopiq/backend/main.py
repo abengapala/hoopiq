@@ -19,7 +19,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production: set to your Vercel domain
+    allow_origins=[
+    "http://localhost:5173",
+    "https://hoopiq-virid.vercel.app",
+],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
