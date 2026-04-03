@@ -4,15 +4,19 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: '#080c12',
-        bg2: '#0d1520',
-        bg3: '#121d2e',
-        bg4: '#182438',
-        accent: '#f7941d',
-        accent2: '#ff6b35',
+        bg:      '#080B10',
+        bg2:     '#0D1117',
+        bg3:     '#131A22',
+        bg4:     '#1A2333',
+        bg5:     '#202D40',
+        accent:  '#F5A623',
+        accent2: '#FF6B2B',
+        green:   '#10D98A',
+        red:     '#FF4757',
+        blue:    '#4A90E2',
       },
       fontFamily: {
-        sans: ['Space Grotesk', 'sans-serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
         mono: ['DM Mono', 'monospace'],
       },
     },

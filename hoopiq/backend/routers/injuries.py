@@ -1,68 +1,56 @@
 from fastapi import APIRouter, HTTPException
-from nba_api.stats.endpoints import leaguedashptteamdefend
 import httpx
-import time
+from cache import get_cached_injuries, set_cached_injuries
 
 router = APIRouter()
 
-# nba_api doesn't have a direct injury endpoint — we scrape the official NBA injury report PDF
-# or use the ESPN/CBS injury API. Here we use the NBA's official injury report endpoint.
-NBA_INJURY_URL = "https://stats.nba.com/js/data/leaders/00_player_movement.json"
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Referer": "https://www.nba.com/",
-    "Origin": "https://www.nba.com",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Host": "stats.nba.com",
-    "Connection": "keep-alive",
-    "x-nba-stats-origin": "stats",
-    "x-nba-stats-token": "true",
-}
-
-# Fallback mock data when API is unavailable
-MOCK_INJURIES = [
-    {"player": "Joel Embiid", "team": "PHI", "status": "OUT", "injury": "Left Knee (Season-Ending)", "updated": "Today"},
-    {"player": "Kawhi Leonard", "team": "LAC", "status": "OUT", "injury": "Right Knee", "updated": "Today"},
-    {"player": "Damian Lillard", "team": "MIL", "status": "OUT", "injury": "Left Achilles", "updated": "Today"},
-    {"player": "Giannis Antetokounmpo", "team": "MIL", "status": "GTD", "injury": "Left Knee Soreness", "updated": "2h ago"},
-    {"player": "De'Aaron Fox", "team": "SAC", "status": "GTD", "injury": "Ankle Sprain", "updated": "4h ago"},
-    {"player": "Chris Paul", "team": "GSW", "status": "GTD", "injury": "Right Hand Contusion", "updated": "1h ago"},
-    {"player": "Zion Williamson", "team": "NOP", "status": "OUT", "injury": "Hamstring", "updated": "Today"},
-    {"player": "Ben Simmons", "team": "BKN", "status": "OUT", "injury": "Back (Season)", "updated": "Today"},
-]
+ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
 
 
 @router.get("/")
 async def get_injuries():
-    """Get current NBA injury report."""
+    # ── Cache check ──────────────────────────────────────────
+    cached = get_cached_injuries()
+    if cached:
+        return cached
+
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(
-                "https://cdn.nba.com/static/json/liveData/injuryReport/injuryreport.json",
-                headers=HEADERS,
-            )
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(f"{ESPN_BASE}/injuries")
             if resp.status_code != 200:
-                return {"injuries": MOCK_INJURIES, "source": "mock"}
-
+                raise HTTPException(status_code=502, detail=f"ESPN error: {resp.status_code}")
             data = resp.json()
-            injuries = []
 
-            for team_data in data.get("injuryReport", []):
-                team_abbr = team_data.get("teamAbbreviation", "")
-                for p in team_data.get("injuredPlayers", []):
-                    injuries.append({
-                        "player": p.get("playerName", ""),
-                        "playerId": p.get("personId", ""),
-                        "team": team_abbr,
-                        "teamId": team_data.get("teamId", ""),
-                        "status": p.get("playerStatus", ""),
-                        "injury": p.get("returnedToGame", p.get("comment", "Unknown")),
-                        "updated": p.get("injuryDate", ""),
-                    })
+        injuries = []
+        for team_entry in data.get("injuries", []):
+            for inj in team_entry.get("injuries", []):
+                athlete = inj.get("athlete", {})
+                team = athlete.get("team", {})
+                # safe player id extraction
+                player_id = str(athlete.get("id", ""))
+                if not player_id and athlete.get("links"):
+                    try:
+                        player_id = athlete["links"][0]["href"].split("/id/")[1].split("/")[0]
+                    except Exception:
+                        player_id = ""
+                injuries.append({
+                    "player": athlete.get("displayName", ""),
+                    "playerId": player_id,
+                    "team": team.get("abbreviation", ""),
+                    "teamId": str(team.get("id", "")),
+                    "status": inj.get("status", ""),
+                    "injury": inj.get("shortComment", ""),
+                    "detail": inj.get("longComment", ""),
+                    "updated": inj.get("date", ""),
+                })
 
-            return {"injuries": injuries, "count": len(injuries), "source": "live"}
-    except Exception:
-        # Return mock data as fallback
-        return {"injuries": MOCK_INJURIES, "count": len(MOCK_INJURIES), "source": "mock"}
+        payload = {"injuries": injuries, "count": len(injuries), "source": "espn"}
+
+        # ── Write to cache ────────────────────────────────────
+        set_cached_injuries(payload)
+
+        return payload
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

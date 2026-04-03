@@ -1,4 +1,5 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
+import logo from '../assets/logo.png'
 
 const NAV = [
   {
@@ -23,7 +24,6 @@ const NAV = [
     items: [
       { path: '/teams', label: 'Teams', icon: '🛡' },
       { path: '/news', label: 'NBA News', icon: '📰' },
-      { path: '/chat', label: 'AI Chatbot', icon: '🤖' },
     ],
   },
 ]
@@ -35,17 +35,14 @@ export default function Sidebar() {
       display: 'flex', flexDirection: 'column', position: 'fixed', height: '100vh', zIndex: 100, overflowY: 'auto',
     }}>
       {/* Logo */}
-      <div style={{ padding: '20px 16px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            width: 32, height: 32, background: 'var(--accent)', borderRadius: '50%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
-          }}>🏀</div>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.5px', lineHeight: 1 }}>HoopIQ</div>
-            <div style={{ fontSize: 10, color: 'var(--text3)', letterSpacing: '2px', fontFamily: 'DM Mono, monospace', marginTop: 2 }}>ANALYTICS</div>
-          </div>
-        </div>
+      <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <NavLink to="/" style={{ textDecoration: 'none' }}>
+          <img
+            src={logo}
+            alt="HoopIQ"
+            style={{ width: 300, height: 'auto', objectFit: 'contain' }}
+          />
+        </NavLink>
       </div>
 
       {/* Nav */}

@@ -14,21 +14,24 @@ async function apiFetch(path, options = {}) {
 
 export const api = {
   // Games
-  getTodayGames: () => apiFetch('/games/today'),
-  getUpcomingGames: (days = 7) => apiFetch(`/games/upcoming?days=${days}`),
-  getGameDetail: (gameId) => apiFetch(`/games/${gameId}`),
+  getTodayGames:    ()              => apiFetch('/games/today'),
+  getUpcomingGames: (days = 7)     => apiFetch(`/games/upcoming?days=${days}`),
+  getGameDetail:    (gameId)       => apiFetch(`/games/${gameId}`),
 
   // Teams
-  getAllTeams: () => apiFetch('/teams/'),
-  getTeam: (teamId) => apiFetch(`/teams/${teamId}`),
-  getStandings: () => apiFetch('/standings/'),
+  getAllTeams:  ()       => apiFetch('/teams/'),
+  getTeam:     (teamId) => apiFetch(`/teams/${teamId}`),
+  getStandings: ()      => apiFetch('/standings/'),
 
   // Players
   getPlayers: (params = {}) => {
     const q = new URLSearchParams(params).toString()
     return apiFetch(`/players/?${q}`)
   },
-  getPlayer: (playerId) => apiFetch(`/players/${playerId}`),
+  // Keep playerId as string — ESPN IDs are large numbers, parseInt is safe
+  // but string avoids any edge cases with routing
+  getPlayer:      (playerId) => apiFetch(`/players/${playerId}`),
+  searchPlayers:  (q, limit = 4) => apiFetch(`/players/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   getStatLeaders: (stat = 'PTS') => apiFetch(`/players/stats/leaders?stat=${stat}`),
 
   // Injuries

@@ -2,7 +2,27 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useApi } from '../hooks/useApi'
-import { LoadingSpinner, ErrorState, SectionHeader } from '../components/UI'
+import { LoadingSpinner, ErrorState, PageHeader, TeamLogo, TEAM_COLORS } from '../components/UI'
+
+// Mirrors the normalizer in UI.jsx
+const ABBR_NORMALIZE = {
+  NO: 'NOP', NOH: 'NOP', NOK: 'NOP',
+  GS: 'GSW', SA: 'SAS', NY: 'NYK', OK: 'OKC',
+  UTAH: 'UTA', PORT: 'POR', NJ: 'BKN', BK: 'BKN',
+  WSH: 'WAS', CHO: 'CHA', BOB: 'CHA',
+}
+function normalizeAbbr(raw) {
+  if (!raw) return ''
+  const upper = raw.toUpperCase().trim()
+  return ABBR_NORMALIZE[upper] || upper
+}
+
+const medalColor = (rank) => {
+  if (rank === 1) return '#CA8A04'
+  if (rank === 2) return '#9CA3AF'
+  if (rank === 3) return '#92400E'
+  return 'var(--text3)'
+}
 
 export default function RankingsPage() {
   const navigate = useNavigate()
@@ -15,65 +35,106 @@ export default function RankingsPage() {
   const all = data?.rankings || []
   const filtered = conf === 'All' ? all : all.filter(t => t.conference === conf)
 
-  const RANK_COLORS = { 1: 'var(--gold)', 2: '#aaa', 3: '#cd7f32' }
-
   return (
-    <div>
-      {/* Conference filter */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: 4, maxWidth: 280 }}>
-        {['All', 'East', 'West'].map(c => (
-          <button key={c} onClick={() => setConf(c)} style={{
-            flex: 1, padding: '8px', borderRadius: 7, fontSize: 13, fontWeight: 500,
-            cursor: 'pointer', border: 'none', fontFamily: 'Space Grotesk, sans-serif',
-            background: conf === c ? 'var(--bg4)' : 'transparent',
-            color: conf === c ? 'var(--text)' : 'var(--text2)',
-            transition: 'all .15s',
-          }}>{c === 'All' ? 'All Teams' : `${c}ern`}</button>
-        ))}
-      </div>
+    <div className="fade-up">
+      <PageHeader
+        title="Power Rankings"
+        subtitle="2024–25 season team power index"
+        right={
+          <div className="tabs">
+            {['All', 'East', 'West'].map(c => (
+              <button key={c} className={`tab ${conf === c ? 'active' : ''}`} onClick={() => setConf(c)}>
+                {c === 'All' ? 'All' : c + 'ern'}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
-      <div className="card" style={{ overflow: 'hidden', padding: 0 }}>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        {/* Table header */}
         <div style={{
-          display: 'grid', gridTemplateColumns: '40px 1fr 80px 60px 60px 70px 80px',
-          padding: '10px 16px', borderBottom: '1px solid var(--border)',
-          fontSize: 11, color: 'var(--text3)', fontFamily: 'DM Mono, monospace',
+          display: 'grid',
+          gridTemplateColumns: '44px 1fr 88px 52px 60px 72px 80px',
+          alignItems: 'center',
+          padding: '10px 20px',
+          borderBottom: '1px solid var(--border)',
+          background: 'var(--bg3)',
+          borderRadius: '10px 10px 0 0',
         }}>
-          <span>#</span><span>TEAM</span><span>RECORD</span><span>PCT</span><span>L10</span><span>STREAK</span><span style={{ textAlign: 'right' }}>PWR SCR</span>
+          {['#', 'Team', 'Record', 'PCT', 'L10', 'Streak', 'Power'].map(h => (
+            <span key={h} className="label" style={{ fontSize: 10 }}>{h}</span>
+          ))}
         </div>
 
-        {filtered.map((t, i) => (
-          <div key={t.teamId}
-            style={{
-              display: 'grid', gridTemplateColumns: '40px 1fr 80px 60px 60px 70px 80px',
-              padding: '13px 16px', borderBottom: '1px solid var(--border)',
-              alignItems: 'center', cursor: 'pointer', transition: 'background .15s',
-            }}
-            onClick={() => navigate(`/teams/${t.teamId}`)}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >
-            <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: 700, color: RANK_COLORS[t.rank] || 'var(--text3)' }}>
-              {t.rank}
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
-              <span style={{ fontWeight: 500, fontSize: 13 }}>{t.teamCity} {t.teamName}</span>
-              <span style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'DM Mono, monospace' }}>{t.conference}</span>
-            </div>
-            <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace' }}>{t.wins}-{t.losses}</span>
-            <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text2)' }}>.{Math.round(t.pct * 1000)}</span>
-            <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text2)' }}>{t.last10}</span>
-            <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', padding: '2px 6px', borderRadius: 4, display: 'inline-block',
-              background: t.streak?.startsWith('W') ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)',
-              color: t.streak?.startsWith('W') ? 'var(--green)' : 'var(--red)',
-            }}>{t.streak}</span>
-            <div style={{ textAlign: 'right' }}>
-              <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'DM Mono, monospace', color: 'var(--accent)' }}>
-                {t.powerScore?.toFixed(0)}
+        {filtered.map((t, i) => {
+          // FIX: API returns "abbr" field; normalize so NO → NOP etc.
+          const abbr = normalizeAbbr(t.abbr || t.teamAbbr || t.abbreviation || '')
+          const color = TEAM_COLORS[abbr] || 'var(--text3)'
+          const isWStreak = t.streak?.startsWith('W')
+
+          return (
+            <div
+              key={t.teamId || i}
+              onClick={() => navigate(`/teams/${t.teamId}`)}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '44px 1fr 88px 52px 60px 72px 80px',
+                alignItems: 'center',
+                padding: '12px 20px',
+                borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none',
+                cursor: 'pointer',
+                transition: 'background 0.12s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+              onMouseLeave={e => e.currentTarget.style.background = ''}
+            >
+              {/* Rank */}
+              <span style={{
+                fontFamily: 'DM Mono, monospace', fontSize: 14,
+                fontWeight: t.rank <= 3 ? 700 : 400,
+                color: medalColor(t.rank),
+              }}>{t.rank}</span>
+
+              {/* Team */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
+                <TeamLogo abbr={abbr} size={30} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 500, color: 'var(--text)',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {t.teamCity || ''} {t.teamName || abbr}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'DM Mono, monospace' }}>
+                    {t.conference}
+                  </div>
+                </div>
+              </div>
+
+              {/* Record */}
+              <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace' }}>{t.wins}–{t.losses}</span>
+
+              {/* PCT */}
+              <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text2)' }}>
+                .{Math.round((t.pct || 0) * 1000).toString().padStart(3, '0')}
               </span>
+
+              {/* L10 */}
+              <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text2)' }}>{t.last10 || '—'}</span>
+
+              {/* Streak */}
+              <span className={`streak-chip ${isWStreak ? 'streak-w' : 'streak-l'}`}>{t.streak || '—'}</span>
+
+              {/* Power score */}
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, fontWeight: 700, color }}>
+                  {t.powerScore?.toFixed(0) ?? '—'}
+                </span>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

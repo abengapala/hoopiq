@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 import httpx
 from datetime import datetime, timezone, timedelta
+from cache import get_cached_games, set_cached_games, get_cached_upcoming, set_cached_upcoming
 
 router = APIRouter()
 
@@ -16,6 +17,20 @@ def calc_win_prob(home_wins, home_losses, away_wins, away_losses):
     if total == 0:
         return 52, 48
     hp = min(97, max(3, round((home_pct / total * 100) + 3)))
+    return hp, 100 - hp
+
+
+def calc_live_win_prob(home_wins, home_losses, away_wins, away_losses,
+                       home_score, away_score, period, is_halftime=False):
+    base_hp, _ = calc_win_prob(home_wins, home_losses, away_wins, away_losses)
+    score_diff = home_score - away_score
+    if is_halftime:
+        weight = 0.30
+    else:
+        period_weights = {1: 0.15, 2: 0.30, 3: 0.50, 4: 0.75}
+        weight = period_weights.get(period, 0.85)
+    score_adjustment = score_diff * 1.5 * weight
+    hp = min(97, max(3, round(base_hp + score_adjustment)))
     return hp, 100 - hp
 
 
@@ -39,18 +54,58 @@ async def get_standings_map(client):
         return {}
 
 
+async def get_team_roster(client, team_id: str) -> list:
+    try:
+        resp = await client.get(f"{ESPN_BASE}/teams/{team_id}/roster")
+        if resp.status_code != 200:
+            return []
+        players = []
+        for player in resp.json().get("athletes", []):
+            pos = player.get("position", {})
+            pos_abbr = pos.get("abbreviation", "") if isinstance(pos, dict) else ""
+            players.append({
+                "playerId": str(player.get("id", "")),
+                "name": player.get("shortName", player.get("displayName", "")),
+                "position": pos_abbr,
+                "number": str(player.get("jersey", "")),
+                "height": str(player.get("displayHeight", "")),
+                "weight": str(player.get("displayWeight", "")),
+                "minutes": None, "points": None, "rebounds": None,
+                "assists": None, "steals": None, "blocks": None,
+                "plusMinus": None, "status": "ROSTER",
+            })
+        return players
+    except Exception:
+        return []
+
+
+def safe_score(raw) -> int:
+    try:
+        return int(float(raw)) if raw not in (None, "", "--") else 0
+    except (TypeError, ValueError):
+        return 0
+
+
 @router.get("/today")
 async def get_today_games():
+    today_str = datetime.now(PH_TZ).strftime("%Y-%m-%d")
+
+    # ── Cache check ──────────────────────────────────────────
+    cached = get_cached_games(today_str)
+    if cached:
+        return cached
+
     try:
-        today = datetime.now(PH_TZ).strftime("%Y%m%d")
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(f"{ESPN_BASE}/scoreboard", params={"dates": today})
+            resp = await client.get(f"{ESPN_BASE}/scoreboard")
             if resp.status_code != 200:
                 raise HTTPException(status_code=502, detail=f"ESPN error: {resp.status_code}")
             data = resp.json()
             standings_map = await get_standings_map(client)
 
         result = []
+        has_live = False
+
         for event in data.get("events", []):
             competition = event.get("competitions", [{}])[0]
             competitors = competition.get("competitors", [])
@@ -60,29 +115,63 @@ async def get_today_games():
             away_team = away.get("team", {})
             status = event.get("status", {})
             status_type = status.get("type", {})
-            status_id = str(status_type.get("id", "1"))
-            status_detail = status_type.get("shortDetail", "TBD")
-            is_live = status_id == "2"
+            status_id = int(status_type.get("id", 1))
+            status_detail = status_type.get("shortDetail", "")
+            is_live = status_id == 2
+            is_final = status_id == 3
+            is_halftime = is_live and "halftime" in status_detail.lower()
+
+            if is_live:
+                has_live = True
+
+            game_time = "TBD"
+            if is_live or is_final:
+                game_time = status_detail or ("Live" if is_live else "Final")
+            else:
+                raw_date = event.get("date", "")
+                if raw_date:
+                    try:
+                        utc_dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                        pht_dt = utc_dt.astimezone(PH_TZ)
+                        game_time = pht_dt.strftime("%-m/%-d · %-I:%M %p PHT")
+                    except Exception:
+                        game_time = status_detail or "TBD"
+                else:
+                    game_time = status_detail or "TBD"
 
             home_abbr = home_team.get("abbreviation", "")
             away_abbr = away_team.get("abbreviation", "")
             hs = standings_map.get(home_abbr, {"wins": 0, "losses": 0})
             as_ = standings_map.get(away_abbr, {"wins": 0, "losses": 0})
-            hp, ap = calc_win_prob(hs["wins"], hs["losses"], as_["wins"], as_["losses"])
+
+            if is_live or is_final:
+                home_score_val = safe_score(home.get("score"))
+                away_score_val = safe_score(away.get("score"))
+                period_val = status.get("period", 4) if is_final else status.get("period", 1)
+                hp, ap = calc_live_win_prob(
+                    hs["wins"], hs["losses"], as_["wins"], as_["losses"],
+                    home_score_val, away_score_val, period_val, is_halftime=is_halftime
+                )
+            else:
+                hp, ap = calc_win_prob(hs["wins"], hs["losses"], as_["wins"], as_["losses"])
 
             result.append({
                 "gameId": event.get("id"),
                 "status": status_id,
                 "isLive": is_live,
+                "isHalftime": is_halftime,
                 "statusText": status_detail,
-                "time": status_detail,
+                "gameTime": game_time,
+                "time": game_time,
+                "period": status.get("period", 0),
+                "gameClock": status.get("displayClock", ""),
                 "arena": competition.get("venue", {}).get("fullName", ""),
                 "homeTeam": {
                     "teamId": home_team.get("id"),
                     "name": home_team.get("shortDisplayName", home_team.get("displayName", "")),
                     "city": home_team.get("location", ""),
                     "abbr": home_abbr,
-                    "score": int(home.get("score", 0) or 0),
+                    "score": safe_score(home.get("score")) if (is_live or is_final) else None,
                     "record": home.get("records", [{}])[0].get("summary", "") if home.get("records") else "",
                     "last5": [],
                 },
@@ -91,14 +180,20 @@ async def get_today_games():
                     "name": away_team.get("shortDisplayName", away_team.get("displayName", "")),
                     "city": away_team.get("location", ""),
                     "abbr": away_abbr,
-                    "score": int(away.get("score", 0) or 0),
+                    "score": safe_score(away.get("score")) if (is_live or is_final) else None,
                     "record": away.get("records", [{}])[0].get("summary", "") if away.get("records") else "",
                     "last5": [],
                 },
                 "winProbability": {"home": hp, "away": ap},
             })
 
-        return {"date": datetime.now(PH_TZ).strftime("%Y-%m-%d"), "games": result, "count": len(result)}
+        espn_date = data.get("day", {}).get("date", today_str)
+        payload = {"date": espn_date, "games": result, "count": len(result)}
+
+        # ── Write to cache ────────────────────────────────────
+        set_cached_games(today_str, payload, has_live=has_live)
+
+        return payload
     except HTTPException:
         raise
     except Exception as e:
@@ -107,6 +202,11 @@ async def get_today_games():
 
 @router.get("/upcoming")
 async def get_upcoming_games(days: int = 7):
+    # ── Cache check ──────────────────────────────────────────
+    cached = get_cached_upcoming(days)
+    if cached:
+        return cached
+
     try:
         upcoming = []
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -123,6 +223,18 @@ async def get_upcoming_games(days: int = 7):
                     away = next((c for c in competitors if c.get("homeAway") == "away"), {})
                     home_team = home.get("team", {})
                     away_team = away.get("team", {})
+
+                    # PHT game time
+                    raw_date = event.get("date", "")
+                    game_time = "TBD"
+                    if raw_date:
+                        try:
+                            utc_dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                            pht_dt = utc_dt.astimezone(PH_TZ)
+                            game_time = pht_dt.strftime("%-I:%M %p PHT")
+                        except Exception:
+                            pass
+
                     upcoming.append({
                         "gameId": event.get("id"),
                         "date": target.strftime("%Y-%m-%d"),
@@ -132,8 +244,16 @@ async def get_upcoming_games(days: int = 7):
                         "awayTeam": away_team.get("abbreviation", ""),
                         "homeTeamId": home_team.get("id"),
                         "awayTeamId": away_team.get("id"),
+                        "gameTime": game_time,
+                        "venue": competition.get("venue", {}).get("fullName", ""),
                     })
-        return {"games": upcoming, "count": len(upcoming)}
+
+        payload = {"games": upcoming, "count": len(upcoming)}
+
+        # ── Write to cache ────────────────────────────────────
+        set_cached_upcoming(days, payload)
+
+        return payload
     except HTTPException:
         raise
     except Exception as e:
@@ -142,6 +262,8 @@ async def get_upcoming_games(days: int = 7):
 
 @router.get("/{game_id}")
 async def get_game_detail(game_id: str):
+    # Note: game detail is NOT cached — it's always fetched live
+    # because scores, clock, and box score change every minute
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(f"{ESPN_BASE}/summary", params={"event": game_id})
@@ -155,12 +277,31 @@ async def get_game_detail(game_id: str):
         home_comp = next((c for c in competitors if c.get("homeAway") == "home"), {})
         away_comp = next((c for c in competitors if c.get("homeAway") == "away"), {})
         status = competitions.get("status", {})
-        status_id = str(status.get("type", {}).get("id", "1"))
+        status_id = int(status.get("type", {}).get("id", 1))
+        status_detail = status.get("type", {}).get("shortDetail", "")
+        is_live = status_id == 2
+        is_final = status_id == 3
+        is_live_or_final = is_live or is_final
+        is_halftime = is_live and "halftime" in status_detail.lower()
 
-        # Parse box score from ESPN summary
-        def parse_team_stats(competitor):
+        home_team_id = str(home_comp.get("team", {}).get("id", ""))
+        away_team_id = str(away_comp.get("team", {}).get("id", ""))
+        home_abbr = home_comp.get("team", {}).get("abbreviation", "")
+        away_abbr = away_comp.get("team", {}).get("abbreviation", "")
+
+        boxscore = data.get("boxscore", {})
+        bs_teams = boxscore.get("teams", [])
+
+        def find_bs_team(team_id):
+            for t in bs_teams:
+                if str(t.get("team", {}).get("id", "")) == str(team_id):
+                    return t
+            return {}
+
+        def parse_team_stats(team_id):
+            bs_team = find_bs_team(team_id)
             stats = {}
-            for s in competitor.get("statistics", []):
+            for s in bs_team.get("statistics", []):
                 name = s.get("name", "")
                 val = s.get("displayValue", "0")
                 try:
@@ -171,7 +312,7 @@ async def get_game_detail(game_id: str):
                 "fgPct": stats.get("fieldGoalPct", 0),
                 "threePct": stats.get("threePointFieldGoalPct", 0),
                 "ftPct": stats.get("freeThrowPct", 0),
-                "rebounds": int(stats.get("totalRebounds", 0)),
+                "rebounds": int(stats.get("totalRebounds", stats.get("rebounds", 0))),
                 "assists": int(stats.get("assists", 0)),
                 "turnovers": int(stats.get("turnovers", 0)),
                 "steals": int(stats.get("steals", 0)),
@@ -180,84 +321,132 @@ async def get_game_detail(game_id: str):
                 "fastBreakPoints": int(stats.get("fastBreakPoints", 0)),
             }
 
-        def parse_players(competitor):
+        def parse_live_players(team_id):
+            players_data = boxscore.get("players", [])
+            team_entry = next(
+                (p for p in players_data if str(p.get("team", {}).get("id", "")) == str(team_id)), {}
+            )
             players = []
-            roster = data.get("rosters", [])
-            team_id = competitor.get("team", {}).get("id", "")
-            team_roster = next((r for r in roster if r.get("team", {}).get("id") == team_id), {})
+            for stat_group in team_entry.get("statistics", []):
+                keys = stat_group.get("keys", [])
+                for entry in stat_group.get("athletes", []):
+                    athlete = entry.get("athlete", {})
+                    if entry.get("didNotPlay", False):
+                        continue
+                    stats_list = entry.get("stats", [])
+
+                    def get_stat(key, default=0):
+                        try:
+                            idx = keys.index(key)
+                            val = stats_list[idx]
+                            if val in ("--", "", None):
+                                return default
+                            val = str(val)
+                            if "-" in val and not val.startswith("-"):
+                                val = val.split("-")[0]
+                            return float(val.replace("+", ""))
+                        except (ValueError, IndexError):
+                            return default
+
+                    pos = athlete.get("position", {})
+                    pos_abbr = pos.get("abbreviation", "") if isinstance(pos, dict) else ""
+                    minutes = stats_list[keys.index("minutes")] if "minutes" in keys else "0"
+                    players.append({
+                        "playerId": str(athlete.get("id", "")),
+                        "name": athlete.get("shortName", athlete.get("displayName", "")),
+                        "position": pos_abbr,
+                        "status": "ACTIVE",
+                        "minutes": minutes,
+                        "points": int(get_stat("points")),
+                        "rebounds": int(get_stat("rebounds")),
+                        "assists": int(get_stat("assists")),
+                        "steals": int(get_stat("steals")),
+                        "blocks": int(get_stat("blocks")),
+                        "plusMinus": int(get_stat("plusMinus")),
+                    })
+            return players
+
+        def parse_scheduled_roster(team_id):
+            roster_list = data.get("rosters", [])
+            team_roster = next(
+                (r for r in roster_list if str(r.get("team", {}).get("id", "")) == str(team_id)), {}
+            )
+            players = []
             for entry in team_roster.get("entries", []):
                 athlete = entry.get("athlete", {})
-                stats_list = entry.get("stats", [])
-                # ESPN roster stats order: MIN, FG, 3PT, FT, OREB, DREB, REB, AST, STL, BLK, TO, PF, +/-, PTS
-                def gs(idx):
-                    try:
-                        return stats_list[idx].get("displayValue", "0")
-                    except Exception:
-                        return "0"
-                def gn(idx):
-                    try:
-                        v = gs(idx)
-                        return float(v.replace("%", "")) if v not in ("--", "") else 0
-                    except Exception:
-                        return 0
-
-                did_not_play = entry.get("didNotPlay", False)
-                if did_not_play:
+                if not athlete:
                     continue
-
+                pos = athlete.get("position", {})
+                pos_abbr = pos.get("abbreviation", "") if isinstance(pos, dict) else ""
                 players.append({
+                    "playerId": str(athlete.get("id", "")),
                     "name": athlete.get("shortName", athlete.get("displayName", "")),
-                    "position": athlete.get("position", {}).get("abbreviation", ""),
-                    "status": "ACTIVE",
-                    "minutes": gs(0),
-                    "points": int(gn(13)),
-                    "rebounds": int(gn(6)),
-                    "assists": int(gn(7)),
-                    "steals": int(gn(8)),
-                    "blocks": int(gn(9)),
-                    "fgPct": round(gn(1) if "/" not in gs(1) else 0, 1),
-                    "threePct": 0,
-                    "ftPct": 0,
-                    "plusMinus": int(gn(12)),
+                    "position": pos_abbr,
+                    "number": str(athlete.get("jersey", "")),
+                    "height": str(athlete.get("displayHeight", "")),
+                    "weight": str(athlete.get("displayWeight", "")),
+                    "minutes": None, "points": None, "rebounds": None,
+                    "assists": None, "steals": None, "blocks": None,
+                    "plusMinus": None, "status": "ROSTER",
                 })
             return players
 
-        home_stats = parse_team_stats(home_comp)
-        away_stats = parse_team_stats(away_comp)
-        home_players = parse_players(home_comp)
-        away_players = parse_players(away_comp)
+        home_stats = parse_team_stats(home_team_id)
+        away_stats = parse_team_stats(away_team_id)
 
-        # Win probability from standings
+        if is_live_or_final:
+            home_players = parse_live_players(home_team_id)
+            away_players = parse_live_players(away_team_id)
+        else:
+            home_players = parse_scheduled_roster(home_team_id)
+            away_players = parse_scheduled_roster(away_team_id)
+
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            if not home_players and not is_live_or_final:
+                home_players = await get_team_roster(client, home_team_id)
+            if not away_players and not is_live_or_final:
+                away_players = await get_team_roster(client, away_team_id)
+
         async with httpx.AsyncClient(timeout=15.0) as client:
             standings_map = await get_standings_map(client)
-        home_abbr = home_comp.get("team", {}).get("abbreviation", "")
-        away_abbr = away_comp.get("team", {}).get("abbreviation", "")
-        hs = standings_map.get(home_abbr, {"wins": 0, "losses": 0})
-        as_ = standings_map.get(away_abbr, {"wins": 0, "losses": 0})
-        hp, ap = calc_win_prob(hs["wins"], hs["losses"], as_["wins"], as_["losses"])
+
+        hs_rec = standings_map.get(home_abbr, {"wins": 0, "losses": 0})
+        as_rec = standings_map.get(away_abbr, {"wins": 0, "losses": 0})
+
+        if is_live or is_final:
+            home_score_val = safe_score(home_comp.get("score"))
+            away_score_val = safe_score(away_comp.get("score"))
+            period_val = status.get("period", 4) if is_final else status.get("period", 1)
+            hp, ap = calc_live_win_prob(
+                hs_rec["wins"], hs_rec["losses"], as_rec["wins"], as_rec["losses"],
+                home_score_val, away_score_val, period_val, is_halftime=is_halftime
+            )
+        else:
+            hp, ap = calc_win_prob(hs_rec["wins"], hs_rec["losses"], as_rec["wins"], as_rec["losses"])
 
         return {
             "gameId": game_id,
             "status": status_id,
-            "isLive": status_id == "2",
-            "statusText": status.get("type", {}).get("shortDetail", ""),
+            "isLive": is_live,
+            "isHalftime": is_halftime,
+            "statusText": status_detail,
             "period": status.get("period", 0),
             "gameClock": status.get("displayClock", ""),
             "homeTeam": {
-                "teamId": home_comp.get("team", {}).get("id"),
+                "teamId": home_team_id,
                 "name": home_comp.get("team", {}).get("shortDisplayName", ""),
                 "city": home_comp.get("team", {}).get("location", ""),
                 "abbr": home_abbr,
-                "score": int(home_comp.get("score", 0) or 0),
+                "score": safe_score(home_comp.get("score")) if is_live_or_final else 0,
                 "statistics": home_stats,
                 "players": home_players,
             },
             "awayTeam": {
-                "teamId": away_comp.get("team", {}).get("id"),
+                "teamId": away_team_id,
                 "name": away_comp.get("team", {}).get("shortDisplayName", ""),
                 "city": away_comp.get("team", {}).get("location", ""),
                 "abbr": away_abbr,
-                "score": int(away_comp.get("score", 0) or 0),
+                "score": safe_score(away_comp.get("score")) if is_live_or_final else 0,
                 "statistics": away_stats,
                 "players": away_players,
             },

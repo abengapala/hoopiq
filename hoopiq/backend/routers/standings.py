@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 import httpx
+from cache import get_cached_standings, set_cached_standings
 
 router = APIRouter()
 
@@ -8,6 +9,11 @@ ESPN_BASE = "https://site.api.espn.com/apis/v2/sports/basketball/nba"
 
 @router.get("/")
 async def get_standings():
+    # ── Cache check ──────────────────────────────────────────
+    cached = get_cached_standings()
+    if cached:
+        return cached
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(f"{ESPN_BASE}/standings")
@@ -21,7 +27,10 @@ async def get_standings():
             conference = group.get("name", "")
             for team_entry in group.get("standings", {}).get("entries", []):
                 team = team_entry.get("team", {})
-                stats = {s["name"]: s.get("displayValue", s.get("value", "")) for s in team_entry.get("stats", [])}
+                stats = {
+                    s["name"]: s.get("displayValue", s.get("value", ""))
+                    for s in team_entry.get("stats", [])
+                }
 
                 wins = int(float(stats.get("wins", 0)))
                 losses = int(float(stats.get("losses", 0)))
@@ -53,7 +62,12 @@ async def get_standings():
         east.sort(key=lambda x: (-x["wins"], x["losses"]))
         west.sort(key=lambda x: (-x["wins"], x["losses"]))
 
-        return {"east": east, "west": west}
+        payload = {"east": east, "west": west}
+
+        # ── Write to cache ────────────────────────────────────
+        set_cached_standings(payload)
+
+        return payload
     except HTTPException:
         raise
     except Exception as e:

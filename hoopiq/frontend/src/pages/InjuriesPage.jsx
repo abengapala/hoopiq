@@ -1,72 +1,205 @@
+import { useState } from 'react'
 import { api } from '../lib/api'
 import { useApi } from '../hooks/useApi'
-import { LoadingSpinner, ErrorState, StatCard, SectionHeader } from '../components/UI'
+import { LoadingSpinner, ErrorState, StatCard, PageHeader, SectionHeader } from '../components/UI'
+
+function formatStatus(status) {
+  const s = status?.toLowerCase()
+  if (s === 'out') return 'Out'
+  if (s === 'day-to-day') return 'DTD'
+  if (s === 'questionable') return 'GTD'
+  if (s === 'probable') return 'PRB'
+  return status || '—'
+}
+
+function getStatusStyle(status) {
+  const s = status?.toLowerCase()
+  if (s === 'out') return { bg: '#FEE2E2', color: '#B91C1C' }
+  if (s === 'day-to-day' || s === 'questionable') return { bg: '#FEF3C7', color: '#B45309' }
+  if (s === 'probable') return { bg: '#DCFCE7', color: '#15803D' }
+  return { bg: 'var(--bg3)', color: 'var(--text3)' }
+}
+
+function InjuryRow({ inj, i, total }) {
+  const [expanded, setExpanded] = useState(false)
+  const style = getStatusStyle(inj.status)
+
+  return (
+    <>
+      <div
+        onClick={() => inj.detail && setExpanded(e => !e)}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '80px 180px 60px 1fr 110px 24px',
+          padding: '11px 20px',
+          borderBottom: (!expanded && i < total - 1) ? '1px solid var(--border)' : 'none',
+          alignItems: 'center',
+          cursor: inj.detail ? 'pointer' : 'default',
+          transition: 'background 0.1s',
+          gap: 8,
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+      >
+        {/* Status */}
+        <span style={{
+          display: 'inline-flex', alignItems: 'center',
+          padding: '2px 10px', borderRadius: 100,
+          fontSize: 11, fontWeight: 600,
+          background: style.bg, color: style.color,
+          width: 'fit-content',
+        }}>
+          {formatStatus(inj.status)}
+        </span>
+
+        {/* Player */}
+        <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {inj.player}
+        </span>
+
+        {/* Team */}
+        <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: 'var(--text4)', fontWeight: 600 }}>
+          {inj.team}
+        </span>
+
+        {/* Injury — short only */}
+        <span style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {inj.injury || '—'}
+        </span>
+
+        {/* Updated */}
+        <span style={{ fontSize: 11, color: 'var(--text4)', fontFamily: 'JetBrains Mono', textAlign: 'right' }}>
+          {inj.updated ? inj.updated.slice(0, 10) : '—'}
+        </span>
+
+        {/* Expand arrow */}
+        <span style={{ color: 'var(--text4)', fontSize: 10, textAlign: 'right' }}>
+          {inj.detail ? (expanded ? '▲' : '▼') : ''}
+        </span>
+      </div>
+
+      {/* Expanded detail */}
+      {expanded && inj.detail && (
+        <div style={{
+          padding: '12px 20px 16px',
+          borderBottom: i < total - 1 ? '1px solid var(--border)' : 'none',
+          background: 'var(--bg3)',
+          fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
+        }}>
+          {inj.detail}
+        </div>
+      )}
+    </>
+  )
+}
+
+function InjuryTable({ items }) {
+  if (!items.length) return (
+    <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text4)', fontSize: 13 }}>
+      No players in this category.
+    </div>
+  )
+
+  return (
+    <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '80px 180px 60px 1fr 110px 24px',
+        padding: '9px 20px',
+        borderBottom: '1px solid var(--border)',
+        fontSize: 11, color: 'var(--text4)',
+        fontFamily: 'JetBrains Mono',
+        background: 'var(--bg3)',
+        gap: 8,
+      }}>
+        <span>STATUS</span>
+        <span>PLAYER</span>
+        <span>TEAM</span>
+        <span>INJURY</span>
+        <span style={{ textAlign: 'right' }}>UPDATED</span>
+        <span />
+      </div>
+
+      {items.map((inj, i) => (
+        <InjuryRow key={i} inj={inj} i={i} total={items.length} />
+      ))}
+    </div>
+  )
+}
 
 export default function InjuriesPage() {
   const { data, loading, error, refetch } = useApi(api.getInjuries)
-  const injuries = data?.injuries || []
+  const [search, setSearch] = useState('')
+  const [tab, setTab] = useState('out')
 
-  if (loading) return <LoadingSpinner text="Fetching injury report..." />
+  if (loading) return <LoadingSpinner text="Loading injury report..." />
   if (error) return <ErrorState message={error} onRetry={refetch} />
 
-  const out = injuries.filter(i => i.status === 'OUT')
-  const gtd = injuries.filter(i => i.status === 'GTD')
-  const other = injuries.filter(i => i.status !== 'OUT' && i.status !== 'GTD')
+  const injuries = data?.injuries || []
 
-  const Section = ({ title, items, color }) => {
-    if (!items.length) return null
-    return (
-      <>
-        <SectionHeader title={title} right={<span className="badge" style={{ background: color + '20', color }}>{items.length} players</span>} />
-        <div className="card" style={{ overflow: 'hidden', padding: 0, marginBottom: 20 }}>
-          <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 70px 1fr 90px',
-            padding: '10px 16px', borderBottom: '1px solid var(--border)',
-            fontSize: 11, color: 'var(--text3)', fontFamily: 'DM Mono, monospace',
-          }}>
-            <span>PLAYER</span><span>TEAM</span><span>INJURY</span><span style={{ textAlign: 'right' }}>UPDATED</span>
-          </div>
-          {items.map((inj, i) => (
-            <div key={i} style={{
-              display: 'grid', gridTemplateColumns: '1fr 70px 1fr 90px',
-              padding: '13px 16px', borderBottom: '1px solid var(--border)',
-              alignItems: 'center', fontSize: 13,
-              transition: 'background .15s',
-            }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{
-                  padding: '2px 6px', borderRadius: 4, fontSize: 10,
-                  fontFamily: 'DM Mono, monospace', fontWeight: 600,
-                  background: inj.status === 'OUT' ? 'rgba(239,68,68,.15)' : 'rgba(245,158,11,.15)',
-                  color: inj.status === 'OUT' ? 'var(--red)' : 'var(--gold)',
-                }}>{inj.status}</span>
-                <span style={{ fontWeight: 500 }}>{inj.player}</span>
-              </div>
-              <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text3)' }}>{inj.team}</span>
-              <span style={{ fontSize: 12, color: 'var(--text2)' }}>{inj.injury}</span>
-              <span style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'DM Mono, monospace', textAlign: 'right' }}>{inj.updated}</span>
-            </div>
-          ))}
-        </div>
-      </>
-    )
-  }
+  const out = injuries.filter(i => i.status?.toLowerCase() === 'out')
+  const gtd = injuries.filter(i =>
+    ['day-to-day', 'questionable', 'gtd'].includes(i.status?.toLowerCase())
+  )
+  const other = injuries.filter(i =>
+    !['out', 'day-to-day', 'questionable', 'gtd'].includes(i.status?.toLowerCase())
+  )
+
+  const currentList = tab === 'out' ? out : tab === 'gtd' ? gtd : other
+  const filtered = currentList.filter(i =>
+    !search ||
+    i.player?.toLowerCase().includes(search.toLowerCase()) ||
+    i.team?.toLowerCase().includes(search.toLowerCase())
+  )
 
   return (
-    <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
-        <StatCard label="OUT" value={out.length} color="var(--red)" sub="Season / Long-term" />
-        <StatCard label="GTD" value={gtd.length} color="var(--gold)" sub="Game-time decision" />
-        <StatCard label="Other" value={other.length} color="var(--blue)" sub="Day-to-day" />
-        <StatCard label="Total" value={injuries.length} sub={`Source: ${data?.source || 'live'}`} />
+    <div className="fade-in">
+      <PageHeader title="Injury Report" sub="Current NBA player availability" />
+
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 28 }}>
+        <StatCard label="Out" value={out.length} color="var(--red)" sub="Season / Long-term" />
+        <StatCard label="Day-to-Day" value={gtd.length} color="var(--gold)" sub="Game-time decision" />
+        <StatCard label="Other" value={other.length} sub="Probable / misc" />
+        <StatCard label="Total" value={injuries.length} sub="Source: ESPN" />
       </div>
 
-      <Section title="OUT" items={out} color="var(--red)" />
-      <Section title="Game-Time Decision" items={gtd} color="var(--gold)" />
-      <Section title="Other" items={other} color="var(--blue)" />
+      {/* Tabs + Search */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'inline-flex', background: 'var(--bg3)', borderRadius: 8, padding: 3, gap: 2 }}>
+          {[
+            { key: 'out', label: `Out (${out.length})` },
+            { key: 'gtd', label: `DTD (${gtd.length})` },
+            { key: 'other', label: `Other (${other.length})` },
+          ].map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)} style={{
+              padding: '5px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+              cursor: 'pointer', border: 'none', fontFamily: 'Inter',
+              background: tab === t.key ? 'var(--bg2)' : 'transparent',
+              color: tab === t.key ? 'var(--text)' : 'var(--text3)',
+              boxShadow: tab === t.key ? 'var(--shadow)' : 'none',
+              transition: 'all 0.15s',
+            }}>{t.label}</button>
+          ))}
+        </div>
+
+        <div style={{ position: 'relative', marginLeft: 'auto' }}>
+          <svg style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--text4)' }}
+            width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input
+            className="input"
+            style={{ paddingLeft: 28, width: 200, fontSize: 12 }}
+            placeholder="Search player or team..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <InjuryTable items={filtered} />
     </div>
   )
 }

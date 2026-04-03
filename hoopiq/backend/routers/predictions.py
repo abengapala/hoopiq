@@ -96,14 +96,24 @@ async def get_predictions():
 
 @router.get("/{game_id}/analysis")
 async def get_game_analysis(game_id: str, home_abbr: str, away_abbr: str, home_prob: int = 50):
-    fallback = f"{home_abbr} holds a {home_prob}% win probability tonight. Home court and recent form make them the projected winner, though {away_abbr} can change the game with momentum."
+    away_prob = 100 - home_prob
+    pick = home_abbr if home_prob >= away_prob else away_abbr
+    pick_prob = max(home_prob, away_prob)
+    underdog = away_abbr if home_prob >= away_prob else home_abbr
+
+    fallback = (
+        f"{pick} holds a {pick_prob}% win probability advantage tonight. "
+        f"They are the projected winner based on season record and home court, "
+        f"though {underdog} will look to change the game with momentum."
+    )
 
     if not GEMINI_API_KEY:
         return {"gameId": game_id, "analysis": fallback}
 
     prompt = f"""You are an expert NBA analyst. Give a concise 3-4 sentence analysis of tonight's {home_abbr} (home) vs {away_abbr} (away) matchup.
-Win probability: {home_abbr} {home_prob}%, {away_abbr} {100-home_prob}%.
-Focus on key matchups, which team has the advantage and why, and one critical factor that could decide the game."""
+Win probability: {home_abbr} {home_prob}%, {away_abbr} {away_prob}%.
+The favored team is {pick} with {pick_prob}% win probability.
+Explain why {pick} is favored, mention a key matchup factor, and name one thing that could flip the result in {underdog}'s favor."""
 
     body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
