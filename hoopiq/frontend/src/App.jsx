@@ -1,6 +1,7 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useLocation } from 'react-router-dom'
 import { useState, useEffect, createContext, useContext } from 'react'
 import Navbar from './components/Navbar'
+import MobileNav from './components/MobileNav'
 import HomePage from './pages/HomePage'
 import UpcomingPage from './pages/UpcomingPage'
 import GameDetailPage from './pages/GameDetailPage'
@@ -18,13 +19,23 @@ import FloatingChat from './components/FloatingChat'
 export const ThemeContext = createContext({ dark: true, toggle: () => {} })
 export const useTheme = () => useContext(ThemeContext)
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return isMobile
+}
+
 export default function App() {
-  // Default to dark — this is a sports broadcast app
   const [dark, setDark] = useState(() => {
     const saved = localStorage.getItem('hoopiq-theme')
     if (saved) return saved === 'dark'
-    return true // dark by default
+    return true
   })
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
@@ -36,26 +47,30 @@ export default function App() {
       <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
         <Navbar />
 
-        <main style={{ paddingTop: 60 }}>
-          <div className="page-wrapper" style={{ paddingTop: 28, paddingBottom: 80 }}>
+        <main style={{ paddingTop: isMobile ? 64 : 70 }}>
+          <div className="page-wrapper" style={{
+            paddingTop: 20,
+            paddingBottom: isMobile ? 90 : 80,
+          }}>
             <Routes>
-              <Route path="/"              element={<HomePage />} />
-              <Route path="/upcoming"      element={<UpcomingPage />} />
-              <Route path="/game/:gameId"  element={<GameDetailPage />} />
-              <Route path="/teams"         element={<TeamsPage />} />
-              <Route path="/teams/:teamId" element={<TeamDetailPage />} />
+              <Route path="/"                  element={<HomePage />} />
+              <Route path="/upcoming"          element={<UpcomingPage />} />
+              <Route path="/game/:gameId"       element={<GameDetailPage />} />
+              <Route path="/teams"             element={<TeamsPage />} />
+              <Route path="/teams/:teamId"     element={<TeamDetailPage />} />
               <Route path="/players/:playerId" element={<PlayerDetailPage />} />
-              <Route path="/predictions"   element={<PredictionsPage />} />
-              <Route path="/news"          element={<NewsPage />} />
-              <Route path="/injuries"      element={<InjuriesPage />} />
-              <Route path="/rankings"      element={<RankingsPage />} />
-              <Route path="/standings"     element={<StandingsPage />} />
-              <Route path="/leaders"       element={<StatLeadersPage />} />
+              <Route path="/predictions"       element={<PredictionsPage />} />
+              <Route path="/news"              element={<NewsPage />} />
+              <Route path="/injuries"          element={<InjuriesPage />} />
+              <Route path="/rankings"          element={<RankingsPage />} />
+              <Route path="/standings"         element={<StandingsPage />} />
+              <Route path="/leaders"           element={<StatLeadersPage />} />
             </Routes>
           </div>
         </main>
 
-        <FloatingChat />
+        {/* Bottom nav on mobile, floating chat on desktop */}
+        {isMobile ? <MobileNav /> : <FloatingChat />}
       </div>
     </ThemeContext.Provider>
   )
