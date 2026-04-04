@@ -49,39 +49,45 @@ export default function HomePage() {
         loading={gamesLoading}
       />
 
-      {/* Dashboard section — scroll target from hero CTA */}
+      {/* Dashboard section */}
       <div id="games-section">
 
         {/* Page header */}
         <div style={{
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
-          marginBottom: 24,
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          marginBottom: 20,
+          flexWrap: 'wrap',
+          gap: 8,
         }}>
           <div>
             <h2 style={{
               fontFamily: "'Bebas Neue', sans-serif",
-              fontSize: 36, letterSpacing: '0.03em',
-              lineHeight: 1, color: 'var(--text)', marginBottom: 6,
+              fontSize: 'clamp(26px, 6vw, 36px)',
+              letterSpacing: '0.03em',
+              lineHeight: 1,
+              color: 'var(--text)',
+              marginBottom: 4,
             }}>
               Today's Games
             </h2>
             <p style={{
-              fontFamily: 'DM Mono, monospace', fontSize: 11,
-              color: 'var(--text3)', letterSpacing: '0.04em',
+              fontFamily: 'DM Mono, monospace',
+              fontSize: 11,
+              color: 'var(--text3)',
+              letterSpacing: '0.04em',
             }}>
               {today} · PHT
             </p>
           </div>
-          <span className="badge badge-live" style={{ fontSize: 10, marginBottom: 4 }}>
+          <span className="badge badge-live" style={{ fontSize: 10, flexShrink: 0 }}>
             Live Data
           </span>
         </div>
 
-        {/* Summary stat cards */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 12, marginBottom: 32,
-        }}>
+        {/* Summary stat cards — 2 cols on mobile, 4 on desktop */}
+        <div className="stat-grid-4" style={{ marginBottom: 24 }}>
           <StatCard label="Games Today" value={gamesLoading ? '—' : games.length} sub="NBA Regular Season" />
           <StatCard label="Live Now" value={gamesLoading ? '—' : liveCount} color="var(--green)" sub="In progress" />
           <StatCard label="Players Out" value={outCount || '—'} color="var(--red)" sub={`${gtdCount} GTD`} />
@@ -92,8 +98,9 @@ export default function HomePage() {
         {gamesLoading && (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
-            gap: 12, marginBottom: 40,
+            gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+            gap: 12,
+            marginBottom: 40,
           }}>
             {[1, 2, 3, 4, 5, 6].map(i => <SkeletonCard key={i} />)}
           </div>
@@ -109,15 +116,20 @@ export default function HomePage() {
         {/* Empty state */}
         {!gamesLoading && !gamesError && games.length === 0 && (
           <div style={{
-            textAlign: 'center', padding: '64px 20px',
-            background: 'var(--bg2)', border: '1px solid var(--border)',
-            borderRadius: 12, marginBottom: 40,
+            textAlign: 'center',
+            padding: '48px 16px',
+            background: 'var(--bg2)',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            marginBottom: 40,
           }}>
             <div style={{ fontSize: 32, marginBottom: 10 }}>🏀</div>
             <div style={{
               fontFamily: "'Bebas Neue', sans-serif",
-              fontSize: 22, letterSpacing: '0.05em',
-              color: 'var(--text2)', marginBottom: 6,
+              fontSize: 22,
+              letterSpacing: '0.05em',
+              color: 'var(--text2)',
+              marginBottom: 6,
             }}>No Games Today</div>
             <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'DM Mono, monospace' }}>
               Check upcoming games for the next schedule
@@ -132,8 +144,12 @@ export default function HomePage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <div className="live-dot" />
                 <span style={{
-                  fontFamily: 'DM Mono, monospace', fontSize: 10, fontWeight: 500,
-                  letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--green)',
+                  fontFamily: 'DM Mono, monospace',
+                  fontSize: 10,
+                  fontWeight: 500,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: 'var(--green)',
                 }}>
                   {liveCount} game{liveCount > 1 ? 's' : ''} in progress
                 </span>
@@ -142,8 +158,9 @@ export default function HomePage() {
 
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
-              gap: 12, marginBottom: 44,
+              gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+              gap: 12,
+              marginBottom: 44,
             }}>
               {games.map((g, i) => (
                 <div key={g.gameId} className={`stagger-${Math.min(i + 1, 6)}`}>
@@ -169,8 +186,11 @@ export default function HomePage() {
 
       {!newsLoading && !newsError && news.length > 0 && (
         <div style={{
-          background: 'var(--bg2)', border: '1px solid var(--border)',
-          borderRadius: 12, padding: '0 20px', overflow: 'hidden',
+          background: 'var(--bg2)',
+          border: '1px solid var(--border)',
+          borderRadius: 12,
+          padding: '0 16px',
+          overflow: 'hidden',
         }}>
           {news.slice(0, 8).map((n, i) => <NewsItem key={n.id ?? i} article={n} />)}
         </div>

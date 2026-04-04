@@ -19,14 +19,15 @@ export default function NewsPage() {
         }
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 32 }}>
+      {/* 2x2 on mobile, 4-col on desktop */}
+      <div className="stat-grid-4" style={{ marginBottom: 28 }}>
         <StatCard label="Total Stories" value={news.length} />
         <StatCard label="Injury Updates" value={news.filter(n => n.category === 'Injury Update').length} color="var(--red)" />
         <StatCard label="Game Recaps" value={news.filter(n => n.category === 'Game Recap').length} />
         <StatCard label="Source" value={data?.source === 'espn' ? 'ESPN' : 'Live'} sub="Updated continuously" />
       </div>
 
-      <div className="card" style={{ padding: '0 20px' }}>
+      <div className="card" style={{ padding: '0 16px' }}>
         {news.map((n, i) => <NewsItem key={i} article={n} />)}
       </div>
     </div>

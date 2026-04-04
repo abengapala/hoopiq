@@ -5,7 +5,6 @@ import { useApi } from '../hooks/useApi'
 import { WinProbBar, SectionHeader, LoadingSpinner, ErrorState, TeamLogo, TEAM_COLORS } from '../components/UI'
 import AIAnalysis from '../components/AIAnalysis'
 
-// Mirrors the normalizer in UI.jsx so abbrs resolve correctly for logos/colors
 const ABBR_NORMALIZE = {
   NO: 'NOP', NOH: 'NOP', NOK: 'NOP',
   GS: 'GSW', SA: 'SAS', NY: 'NYK', OK: 'OKC',
@@ -60,18 +59,20 @@ function CompareRow({ label, homeVal, awayVal, format = v => v, higherIsBetter =
   const homeWins = higherIsBetter ? hv >= av : hv <= av
 
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, alignItems: 'center' }}>
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, alignItems: 'center', gap: 8 }}>
         <span style={{
-          fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: 600,
+          fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 600,
           color: homeWins ? 'var(--text)' : 'var(--text3)',
+          minWidth: 40,
         }}>
           {format(homeVal)}
         </span>
-        <span className="label" style={{ fontSize: 11 }}>{label}</span>
+        <span className="label" style={{ fontSize: 10, textAlign: 'center', flex: 1 }}>{label}</span>
         <span style={{
-          fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: 600,
+          fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 600,
           color: !homeWins ? 'var(--text)' : 'var(--text3)',
+          minWidth: 40, textAlign: 'right',
         }}>
           {format(awayVal)}
         </span>
@@ -132,6 +133,7 @@ function RosterTable({ players, onPlayerClick, isGameLive, injuries }) {
         background: bg, color: color,
         border: `1px solid ${color}22`,
         marginLeft: 6, fontWeight: 600, letterSpacing: '0.04em',
+        flexShrink: 0,
       }}>
         {status}
       </span>
@@ -140,116 +142,120 @@ function RosterTable({ players, onPlayerClick, isGameLive, injuries }) {
 
   if (isGameLive) {
     return (
-      <div style={{ overflowX: 'auto' }}>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 45px 50px 45px 45px 45px 45px 50px',
-          padding: '8px 16px',
-          background: 'var(--bg3)',
-          borderBottom: '1px solid var(--border)',
-        }}>
-          {['Player', 'POS', 'MIN', 'PTS', 'REB', 'AST', 'STL', '+/−'].map(h => (
-            <span key={h} className="label" style={{
-              fontSize: 10,
-              textAlign: h === 'Player' || h === 'POS' ? 'left' : 'right',
-            }}>{h}</span>
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ minWidth: 520 }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 40px 48px 40px 40px 40px 40px 48px',
+            padding: '8px 14px',
+            background: 'var(--bg3)',
+            borderBottom: '1px solid var(--border)',
+          }}>
+            {['Player', 'POS', 'MIN', 'PTS', 'REB', 'AST', 'STL', '+/−'].map(h => (
+              <span key={h} className="label" style={{
+                fontSize: 10,
+                textAlign: h === 'Player' || h === 'POS' ? 'left' : 'right',
+              }}>{h}</span>
+            ))}
+          </div>
+          {players.map((p, i) => (
+            <div
+              key={i}
+              onClick={() => p.playerId && onPlayerClick(p.playerId)}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 40px 48px 40px 40px 40px 40px 48px',
+                padding: '10px 14px',
+                borderBottom: '1px solid var(--border)',
+                cursor: p.playerId ? 'pointer' : 'default',
+                transition: 'background 0.12s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'flex', alignItems: 'center' }}>
+                {p.name}<InjuryBadge name={p.name} />
+              </span>
+              <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text3)' }}>{p.position || '—'}</span>
+              <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', textAlign: 'right', color: 'var(--text2)' }}>{p.minutes || '—'}</span>
+              <span style={{ fontSize: 13, fontFamily: 'DM Mono, monospace', textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>{p.points ?? '—'}</span>
+              <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', textAlign: 'right', color: 'var(--text2)' }}>{p.rebounds ?? '—'}</span>
+              <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', textAlign: 'right', color: 'var(--text2)' }}>{p.assists ?? '—'}</span>
+              <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', textAlign: 'right', color: 'var(--text2)' }}>{p.steals ?? '—'}</span>
+              <span style={{
+                fontSize: 11, fontFamily: 'DM Mono, monospace', textAlign: 'right',
+                color: p.plusMinus > 0 ? 'var(--green)' : p.plusMinus < 0 ? 'var(--red)' : 'var(--text2)',
+              }}>
+                {p.plusMinus > 0 ? '+' : ''}{p.plusMinus ?? '—'}
+              </span>
+            </div>
           ))}
         </div>
-        {players.map((p, i) => (
-          <div
-            key={i}
-            onClick={() => p.playerId && onPlayerClick(p.playerId)}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 45px 50px 45px 45px 45px 45px 50px',
-              padding: '11px 16px',
-              borderBottom: '1px solid var(--border)',
-              cursor: p.playerId ? 'pointer' : 'default',
-              transition: 'background 0.12s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >
-            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', display: 'flex', alignItems: 'center' }}>
-              {p.name}<InjuryBadge name={p.name} />
-            </span>
-            <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text3)' }}>{p.position || '—'}</span>
-            <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', textAlign: 'right', color: 'var(--text2)' }}>{p.minutes || '—'}</span>
-            <span style={{ fontSize: 14, fontFamily: 'DM Mono, monospace', textAlign: 'right', fontWeight: 700, color: 'var(--text)' }}>{p.points ?? '—'}</span>
-            <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', textAlign: 'right', color: 'var(--text2)' }}>{p.rebounds ?? '—'}</span>
-            <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', textAlign: 'right', color: 'var(--text2)' }}>{p.assists ?? '—'}</span>
-            <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', textAlign: 'right', color: 'var(--text2)' }}>{p.steals ?? '—'}</span>
-            <span style={{
-              fontSize: 12, fontFamily: 'DM Mono, monospace', textAlign: 'right',
-              color: p.plusMinus > 0 ? 'var(--green)' : p.plusMinus < 0 ? 'var(--red)' : 'var(--text2)',
-            }}>
-              {p.plusMinus > 0 ? '+' : ''}{p.plusMinus ?? '—'}
-            </span>
-          </div>
-        ))}
       </div>
     )
   }
 
   // Scheduled roster
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 45px 40px 80px 60px',
-        padding: '8px 16px',
-        background: 'var(--bg3)',
-        borderBottom: '1px solid var(--border)',
-      }}>
-        {['Player', 'POS', '#', 'HT / WT', 'STATUS'].map(h => (
-          <span key={h} className="label" style={{
-            fontSize: 10, textAlign: h === 'Player' ? 'left' : 'right',
-          }}>{h}</span>
-        ))}
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div style={{ minWidth: 360 }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 40px 36px 72px 56px',
+          padding: '8px 14px',
+          background: 'var(--bg3)',
+          borderBottom: '1px solid var(--border)',
+        }}>
+          {['Player', 'POS', '#', 'HT / WT', 'STATUS'].map(h => (
+            <span key={h} className="label" style={{
+              fontSize: 10, textAlign: h === 'Player' ? 'left' : 'right',
+            }}>{h}</span>
+          ))}
+        </div>
+        {players.map((p, i) => {
+          const injStatus = getInjuryStatus(p.name)
+          const injColor = injStatus === 'OUT' ? 'var(--red)' : injStatus === 'GTD' ? 'var(--gold)' : 'var(--text3)'
+          const injBg = injStatus === 'OUT' ? 'var(--red-bg)' : injStatus === 'GTD' ? 'var(--gold-bg)' : 'var(--bg3)'
+          return (
+            <div
+              key={i}
+              onClick={() => p.playerId && onPlayerClick(p.playerId)}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 40px 36px 72px 56px',
+                padding: '10px 14px',
+                borderBottom: '1px solid var(--border)',
+                cursor: p.playerId ? 'pointer' : 'default',
+                transition: 'background 0.12s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{p.name}</span>
+              <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text3)', textAlign: 'right' }}>{p.position || '—'}</span>
+              <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text2)', textAlign: 'right' }}>{p.number || '—'}</span>
+              <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text3)', textAlign: 'right' }}>
+                {p.height && p.weight ? `${p.height}/${p.weight}` : p.height || '—'}
+              </span>
+              <span style={{ textAlign: 'right' }}>
+                {injStatus ? (
+                  <span style={{
+                    fontSize: 9, fontFamily: 'DM Mono, monospace',
+                    padding: '2px 6px', borderRadius: 4,
+                    background: injBg, color: injColor,
+                    border: `1px solid ${injColor}22`,
+                    fontWeight: 600, letterSpacing: '0.04em',
+                  }}>
+                    {injStatus}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 11, color: 'var(--green)', fontFamily: 'DM Mono, monospace' }}>Active</span>
+                )}
+              </span>
+            </div>
+          )
+        })}
       </div>
-      {players.map((p, i) => {
-        const injStatus = getInjuryStatus(p.name)
-        const injColor = injStatus === 'OUT' ? 'var(--red)' : injStatus === 'GTD' ? 'var(--gold)' : 'var(--text3)'
-        const injBg = injStatus === 'OUT' ? 'var(--red-bg)' : injStatus === 'GTD' ? 'var(--gold-bg)' : 'var(--bg3)'
-        return (
-          <div
-            key={i}
-            onClick={() => p.playerId && onPlayerClick(p.playerId)}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 45px 40px 80px 60px',
-              padding: '11px 16px',
-              borderBottom: '1px solid var(--border)',
-              cursor: p.playerId ? 'pointer' : 'default',
-              transition: 'background 0.12s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >
-            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{p.name}</span>
-            <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text3)', textAlign: 'right' }}>{p.position || '—'}</span>
-            <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text2)', textAlign: 'right' }}>{p.number || '—'}</span>
-            <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text3)', textAlign: 'right' }}>
-              {p.height && p.weight ? `${p.height} / ${p.weight}` : p.height || '—'}
-            </span>
-            <span style={{ textAlign: 'right' }}>
-              {injStatus ? (
-                <span style={{
-                  fontSize: 9, fontFamily: 'DM Mono, monospace',
-                  padding: '2px 6px', borderRadius: 4,
-                  background: injBg, color: injColor,
-                  border: `1px solid ${injColor}22`,
-                  fontWeight: 600, letterSpacing: '0.04em',
-                }}>
-                  {injStatus}
-                </span>
-              ) : (
-                <span style={{ fontSize: 11, color: 'var(--green)', fontFamily: 'DM Mono, monospace' }}>Active</span>
-              )}
-            </span>
-          </div>
-        )
-      })}
     </div>
   )
 }
@@ -294,7 +300,6 @@ export default function GameDetailPage() {
   const homeColor = TEAM_COLORS[homeAbbr] || '#3b82f6'
   const awayColor = TEAM_COLORS[awayAbbr] || '#888'
 
-  // Use scoreboard path for NOP/UTA
   const getLogoUrl = (abbr) => {
     if (!abbr) return null
     const special = new Set(['NOP', 'UTA'])
@@ -307,7 +312,7 @@ export default function GameDetailPage() {
   const awayLogo = getLogoUrl(awayAbbr)
 
   const tabStyle = (active) => ({
-    padding: '6px 16px', borderRadius: 6,
+    padding: '6px 12px', borderRadius: 6,
     border: '1px solid var(--border)',
     background: active ? 'var(--text)' : 'transparent',
     color: active ? 'var(--bg)' : 'var(--text3)',
@@ -319,7 +324,7 @@ export default function GameDetailPage() {
   return (
     <div className="fade-up" style={{ maxWidth: 860 }}>
 
-      <button onClick={() => navigate(-1)} className="btn" style={{ marginBottom: 24, gap: 6 }}>
+      <button onClick={() => navigate(-1)} className="btn" style={{ marginBottom: 20, gap: 6 }}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="m15 18-6-6 6-6"/>
         </svg>
@@ -327,14 +332,14 @@ export default function GameDetailPage() {
       </button>
 
       {/* ── Match Hero ── */}
-      <div className="card" style={{ marginBottom: 20, padding: '28px 32px', overflow: 'hidden', position: 'relative' }}>
+      <div className="card" style={{ marginBottom: 16, padding: 'clamp(16px, 4vw, 28px) clamp(16px, 4vw, 32px)', overflow: 'hidden', position: 'relative' }}>
 
-        {/* Aura: home = left, away = right — matches scoreboard layout */}
+        {/* Aura logos */}
         {homeLogo && (
           <img src={homeLogo} alt="" aria-hidden="true" style={{
             position: 'absolute', left: -20, top: '50%',
             transform: 'translateY(-50%)',
-            width: 220, height: 220,
+            width: 180, height: 180,
             objectFit: 'contain', opacity: 0.055,
             pointerEvents: 'none', filter: 'blur(2px)',
           }} />
@@ -343,15 +348,15 @@ export default function GameDetailPage() {
           <img src={awayLogo} alt="" aria-hidden="true" style={{
             position: 'absolute', right: -20, top: '50%',
             transform: 'translateY(-50%)',
-            width: 220, height: 220,
+            width: 180, height: 180,
             objectFit: 'contain', opacity: 0.055,
             pointerEvents: 'none', filter: 'blur(2px)',
           }} />
         )}
 
         {/* Status row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, position: 'relative' }}>
-          <span style={{ fontSize: 13, color: 'var(--text3)', fontFamily: 'DM Mono, monospace' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, position: 'relative', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'DM Mono, monospace' }}>
             {toPhilippineTime(data.statusText)}
           </span>
           {isLive ? (
@@ -368,14 +373,15 @@ export default function GameDetailPage() {
         {/* Scoreboard: HOME left, AWAY right */}
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr auto 1fr',
-          gap: 24, alignItems: 'center', marginBottom: 28, position: 'relative',
+          gap: 'clamp(8px, 3vw, 24px)', alignItems: 'center', marginBottom: 20, position: 'relative',
         }}>
           {/* Home — LEFT */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
-            <TeamLogo abbr={homeAbbr} size={52} />
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
+            <TeamLogo abbr={homeAbbr} size={44} />
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
               <span style={{
-                fontFamily: "'Bebas Neue', sans-serif", fontSize: 28,
+                fontFamily: "'Bebas Neue', sans-serif",
+                fontSize: 'clamp(20px, 5vw, 28px)',
                 letterSpacing: '0.03em',
                 color: homeLeading ? 'var(--text)' : 'var(--text3)',
               }}>
@@ -385,14 +391,15 @@ export default function GameDetailPage() {
                 <span style={{ fontSize: 10, fontFamily: 'DM Mono, monospace', color: 'var(--green)' }}>FAV</span>
               )}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'Inter, sans-serif' }}>
+            <div style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'Inter, sans-serif' }}>
               {home.city} {home.name}
             </div>
             {isGameLive && (
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                 <span style={{
                   fontFamily: "'Bebas Neue', sans-serif",
-                  fontSize: 56, lineHeight: 1, letterSpacing: '0.02em',
+                  fontSize: 'clamp(40px, 10vw, 56px)',
+                  lineHeight: 1, letterSpacing: '0.02em',
                   color: homeLeading ? 'var(--text)' : 'var(--text3)',
                   transition: 'color 0.3s',
                 }}>
@@ -408,37 +415,39 @@ export default function GameDetailPage() {
           {/* VS */}
           <div style={{ textAlign: 'center' }}>
             <div style={{
-              fontFamily: 'DM Mono, monospace', fontSize: 13,
+              fontFamily: 'DM Mono, monospace', fontSize: 12,
               fontWeight: 500, color: 'var(--text3)', letterSpacing: '0.08em',
             }}>VS</div>
           </div>
 
           {/* Away — RIGHT */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
-            <TeamLogo abbr={awayAbbr} size={52} />
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+            <TeamLogo abbr={awayAbbr} size={44} />
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
               {!isGameLive && awayLeading && (
                 <span style={{ fontSize: 10, fontFamily: 'DM Mono, monospace', color: 'var(--green)' }}>FAV</span>
               )}
               <span style={{
-                fontFamily: "'Bebas Neue', sans-serif", fontSize: 28,
+                fontFamily: "'Bebas Neue', sans-serif",
+                fontSize: 'clamp(20px, 5vw, 28px)',
                 letterSpacing: '0.03em', textAlign: 'right',
                 color: awayLeading ? 'var(--text)' : 'var(--text3)',
               }}>
                 {awayAbbr}
               </span>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'Inter, sans-serif', textAlign: 'right' }}>
+            <div style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'Inter, sans-serif', textAlign: 'right' }}>
               {away.city} {away.name}
             </div>
             {isGameLive && (
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                 {awayLeading && isLive && (
                   <span style={{ fontSize: 12, color: 'var(--green)', fontFamily: 'DM Mono, monospace' }}>▲</span>
                 )}
                 <span style={{
                   fontFamily: "'Bebas Neue', sans-serif",
-                  fontSize: 56, lineHeight: 1, letterSpacing: '0.02em', textAlign: 'right',
+                  fontSize: 'clamp(40px, 10vw, 56px)',
+                  lineHeight: 1, letterSpacing: '0.02em', textAlign: 'right',
                   color: awayLeading ? 'var(--text)' : 'var(--text3)',
                   transition: 'color 0.3s',
                 }}>
@@ -449,12 +458,7 @@ export default function GameDetailPage() {
           </div>
         </div>
 
-        {/* Win probability
-            FIX: WinProbBar always renders left=away, right=home.
-            Our scoreboard is home=left, away=right — the OPPOSITE.
-            So we pass awayAbbr as homeAbbr and vice versa to flip the labels
-            so they align with the scoreboard above.
-        */}
+        {/* Win probability */}
         <div style={{ position: 'relative' }}>
           <div style={{ textAlign: 'center', marginBottom: 8 }}>
             <span className="label" style={{ fontSize: 10 }}>Win Probability</span>
@@ -472,7 +476,7 @@ export default function GameDetailPage() {
       <AIAnalysis gameId={gameId} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeProb={prob.home} />
 
       {/* Team Comparison */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <span className="section-title">Team Comparison</span>
         <div style={{ display: 'flex', gap: 16, fontSize: 12, fontFamily: 'DM Mono, monospace' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -485,7 +489,7 @@ export default function GameDetailPage() {
           </span>
         </div>
       </div>
-      <div className="card" style={{ marginBottom: 24 }}>
+      <div className="card" style={{ marginBottom: 20 }}>
         {hasStats ? (
           <>
             <CompareRow label="FG%"      homeVal={parseFloat(hs.fgPct).toFixed(1)}    awayVal={parseFloat(as_.fgPct).toFixed(1)}    format={v => `${v}%`} />
@@ -507,7 +511,7 @@ export default function GameDetailPage() {
       </div>
 
       {/* Box Score / Roster */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <span className="section-title">{isGameLive ? 'Box Score' : 'Roster'}</span>
         <div style={{ display: 'flex', gap: 6 }}>
           <button style={tabStyle(rosterTab === 'home')} onClick={() => setRosterTab('home')}>{homeAbbr}</button>

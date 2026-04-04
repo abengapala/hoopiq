@@ -4,7 +4,6 @@ import { api } from '../lib/api'
 import { useApi } from '../hooks/useApi'
 import { LoadingSpinner, ErrorState, PageHeader, TeamLogo } from "../components/UI"
 
-// Abbr normalizer (mirrors UI.jsx)
 const ABBR_NORMALIZE = {
   NO: 'NOP', NOH: 'NOP', NOK: 'NOP',
   GS: 'GSW', SA: 'SAS', NY: 'NYK', OK: 'OKC',
@@ -22,12 +21,10 @@ const STAT_LABELS = {
   PTS: 'Points', REB: 'Rebounds', AST: 'Assists',
   STL: 'Steals', BLK: 'Blocks', FG_PCT: 'FG%', FG3_PCT: '3PT%',
 }
-// Maps frontend tab key → the field on the response object to display as primary stat
 const STAT_KEY = {
   PTS: 'pts', REB: 'reb', AST: 'ast',
   STL: 'stl', BLK: 'blk', FG_PCT: 'fgPct', FG3_PCT: 'fg3Pct',
 }
-// Format the primary stat value (percentages need % suffix)
 function formatStat(val, statTab) {
   if (val == null || val === 0) return '—'
   if (statTab === 'FG_PCT' || statTab === 'FG3_PCT') {
@@ -39,7 +36,6 @@ function formatStat(val, statTab) {
 export default function StatLeadersPage() {
   const navigate = useNavigate()
   const [stat, setStat] = useState('PTS')
-  // Pass stat key directly — backend now accepts PTS, REB, AST, STL, BLK, FG_PCT, FG3_PCT
   const { data, loading, error, refetch } = useApi(() => api.getStatLeaders(stat), [stat])
 
   const leaders = data?.leaders || []
@@ -49,8 +45,8 @@ export default function StatLeadersPage() {
     <div className="fade-up">
       <PageHeader title="Stat Leaders" subtitle="2025–26 NBA season averages" />
 
-      {/* Stat selector */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 28, flexWrap: 'wrap' }}>
+      {/* Stat selector — wraps naturally on mobile */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap' }}>
         {STATS.map(s => (
           <button
             key={s}
@@ -60,6 +56,8 @@ export default function StatLeadersPage() {
               background: stat === s ? 'var(--text)' : 'var(--bg2)',
               color: stat === s ? 'var(--bg)' : 'var(--text2)',
               borderColor: stat === s ? 'var(--text)' : 'var(--border)',
+              padding: '7px 12px',
+              fontSize: 12,
             }}
           >
             {STAT_LABELS[s]}
@@ -72,7 +70,7 @@ export default function StatLeadersPage() {
 
       {!loading && !error && leaders.length === 0 && (
         <div style={{
-          textAlign: 'center', padding: '64px 20px',
+          textAlign: 'center', padding: '48px 16px',
           background: 'var(--bg2)', border: '1px solid var(--border)',
           borderRadius: 12,
         }}>
@@ -86,86 +84,86 @@ export default function StatLeadersPage() {
 
       {!loading && !error && leaders.length > 0 && (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          {/* Header */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '44px 1fr 90px 80px 56px 56px 56px',
-            alignItems: 'center',
-            padding: '10px 20px',
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--bg3)',
-            borderRadius: '10px 10px 0 0',
-          }}>
-            {['#', 'Player', 'Team', STAT_LABELS[stat], 'PTS', 'REB', 'AST'].map((h, idx) => (
-              <span key={h + idx} className="label" style={{
-                fontSize: 10,
-                textAlign: idx < 3 ? 'left' : 'right',
-              }}>{h}</span>
-            ))}
-          </div>
-
-          {leaders.map((p, i) => {
-            const abbr = normalizeAbbr(p.teamAbbr || '')
-            return (
-              <div
-                key={p.playerId || i}
-                onClick={() => navigate(`/players/${p.playerId}`)}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '44px 1fr 90px 80px 56px 56px 56px',
-                  alignItems: 'center',
-                  padding: '12px 20px',
-                  borderBottom: i < leaders.length - 1 ? '1px solid var(--border)' : 'none',
-                  cursor: 'pointer',
-                  transition: 'background 0.12s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-                onMouseLeave={e => e.currentTarget.style.background = ''}
-              >
-                {/* Rank */}
-                <span style={{
-                  fontFamily: 'DM Mono, monospace', fontSize: 13,
-                  fontWeight: i < 3 ? 700 : 400,
-                  color: i === 0 ? '#CA8A04' : i === 1 ? '#9CA3AF' : i === 2 ? '#92400E' : 'var(--text3)',
-                }}>{i + 1}</span>
-
-                {/* Player name + GP */}
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{p.playerName}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'DM Mono, monospace', marginTop: 1 }}>
-                    {p.gp > 0 ? `${p.gp} GP` : ''}
-                  </div>
-                </div>
-
-                {/* Team logo + abbr */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <TeamLogo abbr={abbr} size={22} />
-                  <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text3)' }}>
-                    {abbr}
-                  </span>
-                </div>
-
-                {/* Primary stat — highlighted */}
-                <span style={{
-                  fontFamily: 'DM Mono, monospace', fontSize: 16,
-                  fontWeight: 700, color: 'var(--text)', textAlign: 'right',
-                }}>
-                  {formatStat(p[statKey], stat)}
-                </span>
-
-                {/* Secondary stats */}
-                <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text2)', textAlign: 'right' }}>
-                  {p.pts > 0 ? p.pts : '—'}
-                </span>
-                <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text2)', textAlign: 'right' }}>
-                  {p.reb > 0 ? p.reb : '—'}
-                </span>
-                <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text2)', textAlign: 'right' }}>
-                  {p.ast > 0 ? p.ast : '—'}
-                </span>
+          {/* Scrollable on mobile */}
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <div style={{ minWidth: 480 }}>
+              {/* Header */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '40px 1fr 80px 72px 52px 52px 52px',
+                alignItems: 'center',
+                padding: '10px 16px',
+                borderBottom: '1px solid var(--border)',
+                background: 'var(--bg3)',
+                borderRadius: '10px 10px 0 0',
+              }}>
+                {['#', 'Player', 'Team', STAT_LABELS[stat], 'PTS', 'REB', 'AST'].map((h, idx) => (
+                  <span key={h + idx} className="label" style={{
+                    fontSize: 10,
+                    textAlign: idx < 3 ? 'left' : 'right',
+                  }}>{h}</span>
+                ))}
               </div>
-            )
-          })}
+
+              {leaders.map((p, i) => {
+                const abbr = normalizeAbbr(p.teamAbbr || '')
+                return (
+                  <div
+                    key={p.playerId || i}
+                    onClick={() => navigate(`/players/${p.playerId}`)}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '40px 1fr 80px 72px 52px 52px 52px',
+                      alignItems: 'center',
+                      padding: '11px 16px',
+                      borderBottom: i < leaders.length - 1 ? '1px solid var(--border)' : 'none',
+                      cursor: 'pointer',
+                      transition: 'background 0.12s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+                    onMouseLeave={e => e.currentTarget.style.background = ''}
+                  >
+                    <span style={{
+                      fontFamily: 'DM Mono, monospace', fontSize: 13,
+                      fontWeight: i < 3 ? 700 : 400,
+                      color: i === 0 ? '#CA8A04' : i === 1 ? '#9CA3AF' : i === 2 ? '#92400E' : 'var(--text3)',
+                    }}>{i + 1}</span>
+
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{p.playerName}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'DM Mono, monospace', marginTop: 1 }}>
+                        {p.gp > 0 ? `${p.gp} GP` : ''}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <TeamLogo abbr={abbr} size={20} />
+                      <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text3)' }}>
+                        {abbr}
+                      </span>
+                    </div>
+
+                    <span style={{
+                      fontFamily: 'DM Mono, monospace', fontSize: 15,
+                      fontWeight: 700, color: 'var(--text)', textAlign: 'right',
+                    }}>
+                      {formatStat(p[statKey], stat)}
+                    </span>
+
+                    <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text2)', textAlign: 'right' }}>
+                      {p.pts > 0 ? p.pts : '—'}
+                    </span>
+                    <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text2)', textAlign: 'right' }}>
+                      {p.reb > 0 ? p.reb : '—'}
+                    </span>
+                    <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text2)', textAlign: 'right' }}>
+                      {p.ast > 0 ? p.ast : '—'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       )}
     </div>
