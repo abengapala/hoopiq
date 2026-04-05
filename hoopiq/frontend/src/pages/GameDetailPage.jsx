@@ -106,7 +106,14 @@ function GameCountdown({ isoTime, awayColor, homeColor }) {
   }
 
   const isImminent = t.total < 3600000
-  const isToday    = t.days === 0
+
+  // Check if tipoff is actually today in PHT
+  const nowPHT     = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }))
+  const tipoffPHT  = new Date(new Date(isoTime).toLocaleString('en-US', { timeZone: 'Asia/Manila' }))
+  const isToday    = nowPHT.getFullYear() === tipoffPHT.getFullYear() &&
+                     nowPHT.getMonth()    === tipoffPHT.getMonth() &&
+                     nowPHT.getDate()     === tipoffPHT.getDate()
+  
   const accent     = isImminent ? '#22c55e' : isToday ? '#f97316' : 'var(--accent)'
   const ballColor  = isImminent ? '#22c55e' : '#f97316'
 
@@ -520,8 +527,30 @@ export default function GameDetailPage() {
   const awayLogo = getLogoUrl(awayAbbr)
 
   // ISO tip-off time for countdown — backend may send data.startTime or data.isoDate
-  const tipoffIso = data.startTime || data.isoDate || data.date || null
-
+  function parseTipoffIso(statusText) {
+    if (!statusText) return null
+    try {
+      // statusText format: "4/5 - 3:30 PM EDT"
+      const match = statusText.match(/(\d{1,2})\/(\d{1,2})\s*[-–]\s*(\d{1,2}):(\d{2})\s*(AM|PM)\s*(EDT|EST|ET)/i)
+      if (!match) return null
+      const [, month, day, hourStr, min, ampm, tz] = match
+      let h = parseInt(hourStr)
+      if (ampm.toUpperCase() === 'PM' && h !== 12) h += 12
+      if (ampm.toUpperCase() === 'AM' && h === 12) h = 0
+      const offsetHrs = tz.toUpperCase() === 'EST' ? 5 : 4  // EDT=UTC-4, EST=UTC-5
+      const year = new Date().getFullYear()
+      // Build UTC time directly
+      let utcH = h + offsetHrs
+      let utcDay = parseInt(day)
+      let utcMonth = parseInt(month)
+      if (utcH >= 24) { utcH -= 24; utcDay += 1 }
+      const iso = `${year}-${String(utcMonth).padStart(2,'0')}-${String(utcDay).padStart(2,'0')}T${String(utcH).padStart(2,'0')}:${min}:00.000Z`
+      const d = new Date(iso)
+      return isNaN(d) ? null : d.toISOString()
+    } catch { return null }
+  }
+  
+  const tipoffIso = parseTipoffIso(data.statusText) || null
   const tabStyle = (active) => ({
     padding: '6px 12px', borderRadius: 6,
     border: '1px solid var(--border)',
