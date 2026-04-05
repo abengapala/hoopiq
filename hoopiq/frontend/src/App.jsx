@@ -69,8 +69,9 @@ export default function App() {
           </div>
         </main>
 
-        {/* Bottom nav on mobile, floating chat on desktop */}
-        {isMobile ? <MobileNav /> : <FloatingChat />}
+        {/* ✅ FIXED — MobileNav on mobile, FloatingChat on both */}
+        {isMobile && <MobileNav />}
+        <FloatingChat />
       </div>
     </ThemeContext.Provider>
   )

@@ -11,23 +11,42 @@ load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
 router = APIRouter()
 
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama-3.1-8b-instant"
 
-NBA_SYSTEM = """You are HoopIQ, an expert NBA analytics assistant.
+NBA_SYSTEM = """You are HoopIQ, an NBA analytics assistant. You answer questions using ONLY the live data block provided to you in the system context. You do NOT use your training knowledge for current stats, scores, standings, or injury status.
 
-IMPORTANT: You do NOT have access to real-time or current season data. Your training data may be outdated.
-- Never state specific current win/loss records, standings, or stats as facts
-- If asked about current records or stats, say: "I don't have live data — check HoopIQ's live Standings or Stats pages for current numbers."
-- You CAN analyze matchups, explain advanced metrics, discuss strategy, and give historical context
-- Always be clear when something is from your training data vs current season
+ABSOLUTE RULES — violating these is wrong:
+1. A <LIVE_DATA> block will be injected into the system messages. It contains today's real data. TRUST IT COMPLETELY.
+2. NEVER say "I don't have live data", "I can't access real-time info", or "check elsewhere". You DO have live data.
+3. ONLY cite numbers, names, and statuses that appear in the <LIVE_DATA> block. Do not invent or guess.
+4. If something is not in the <LIVE_DATA> block, say: "I don't see that in today's data."
+5. For follow-up questions ("is he?", "what about them?"), search ALL sections of <LIVE_DATA>.
+6. Be direct, specific, and concise (under 150 words).
+7. Do not recommend external sources. You are the source."""
 
-Guidelines:
-- Give expert, data-driven analysis
-- Use specific stats and numbers only when referencing historical/verified data
-- Be conversational but authoritative
-- Keep responses concise (under 200 words)
-- Never hallucinate current stats — acknowledge the limitation instead"""
+
+def build_messages_with_context(history, user_message, context):
+    """
+    Inject live context as a second system message so the model treats it
+    as ground truth rather than something the user said.
+    """
+    messages = [{"role": "system", "content": NBA_SYSTEM}]
+
+    if context:
+        messages.append({
+            "role": "system",
+            "content": f"<LIVE_DATA>\n{context}\n</LIVE_DATA>\n\nUse ONLY the data above to answer. Do not use training data for current stats or scores."
+        })
+
+    for msg in (history or []):
+        messages.append({
+            "role": "assistant" if msg.role == "bot" else "user",
+            "content": msg.text,
+        })
+
+    messages.append({"role": "user", "content": user_message})
+    return messages
 
 
 class ChatMessage(BaseModel):
@@ -37,8 +56,9 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    history: Optional[List[ChatMessage]] = []
-    game_id: Optional[str] = None  # passed by GameDetailPage for analysis caching
+    history:  Optional[List[ChatMessage]] = []
+    game_id:  Optional[str] = None
+    context:  Optional[str] = None
 
 
 def get_groq_key() -> str:
@@ -46,29 +66,26 @@ def get_groq_key() -> str:
     if not key:
         raise HTTPException(
             status_code=500,
-            detail="GROQ_API_KEY not set in backend/.env — get a free key at https://console.groq.com"
+            detail="GROQ_API_KEY not set in backend/.env"
         )
     return key
 
 
 @router.post("/")
 async def chat(request: ChatRequest):
-    """AI chatbot powered by Groq — fast Llama 3.1 inference."""
     GROQ_API_KEY = get_groq_key()
 
-    messages = [{"role": "system", "content": NBA_SYSTEM}]
-    for msg in (request.history or []):
-        messages.append({
-            "role": "assistant" if msg.role == "bot" else "user",
-            "content": msg.text,
-        })
-    messages.append({"role": "user", "content": request.message})
+    messages = build_messages_with_context(
+        request.history,
+        request.message,
+        request.context,
+    )
 
     body = {
         "model": GROQ_MODEL,
         "messages": messages,
         "max_tokens": 400,
-        "temperature": 0.7,
+        "temperature": 0.4,  # lower = more faithful to provided data
     }
 
     try:
@@ -88,7 +105,7 @@ async def chat(request: ChatRequest):
                     detail=err.get("message", f"Groq API error {resp.status_code}")
                 )
 
-            data = resp.json()
+            data  = resp.json()
             reply = (
                 data.get("choices", [{}])[0]
                     .get("message", {})
@@ -104,12 +121,6 @@ async def chat(request: ChatRequest):
 
 @router.post("/analysis")
 async def game_analysis(request: ChatRequest):
-    """
-    Game-specific AI analysis for GameDetailPage.
-    - If game_id is provided and analysis is cached → return instantly, skip Groq
-    - Otherwise call Groq and cache the result permanently
-    """
-    # ── Cache check ──────────────────────────────────────────
     if request.game_id:
         cached = get_cached_analysis(request.game_id)
         if cached:
@@ -117,16 +128,17 @@ async def game_analysis(request: ChatRequest):
 
     GROQ_API_KEY = get_groq_key()
 
-    messages = [
-        {"role": "system", "content": NBA_SYSTEM},
-        {"role": "user", "content": request.message},
-    ]
+    messages = build_messages_with_context(
+        [],
+        request.message,
+        request.context,
+    )
 
     body = {
         "model": GROQ_MODEL,
         "messages": messages,
         "max_tokens": 300,
-        "temperature": 0.65,
+        "temperature": 0.4,
     }
 
     try:
@@ -143,14 +155,13 @@ async def game_analysis(request: ChatRequest):
                 err = resp.json().get("error", {})
                 raise HTTPException(status_code=502, detail=err.get("message", "Groq API error"))
 
-            data = resp.json()
+            data  = resp.json()
             reply = (
                 data.get("choices", [{}])[0]
                     .get("message", {})
                     .get("content", "No analysis available.")
             )
 
-        # ── Write to cache ────────────────────────────────────
         if request.game_id:
             set_cached_analysis(request.game_id, reply)
 

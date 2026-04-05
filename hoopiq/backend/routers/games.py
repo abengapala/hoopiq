@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 import httpx
 from datetime import datetime, timezone, timedelta
 from cache import get_cached_games, set_cached_games, get_cached_upcoming, set_cached_upcoming
+from supabase_client import get_supabase
 
 router = APIRouter()
 
@@ -262,8 +263,6 @@ async def get_upcoming_games(days: int = 7):
 
 @router.get("/{game_id}")
 async def get_game_detail(game_id: str):
-    # Note: game detail is NOT cached — it's always fetched live
-    # because scores, clock, and box score change every minute
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(f"{ESPN_BASE}/summary", params={"event": game_id})
@@ -276,13 +275,27 @@ async def get_game_detail(game_id: str):
         competitors = competitions.get("competitors", [])
         home_comp = next((c for c in competitors if c.get("homeAway") == "home"), {})
         away_comp = next((c for c in competitors if c.get("homeAway") == "away"), {})
+
         status = competitions.get("status", {})
         status_id = int(status.get("type", {}).get("id", 1))
         status_detail = status.get("type", {}).get("shortDetail", "")
+
         is_live = status_id == 2
         is_final = status_id == 3
         is_live_or_final = is_live or is_final
         is_halftime = is_live and "halftime" in status_detail.lower()
+
+        # ✅ Extract game date (PHT)
+        raw_event_date = header.get("competitions", [{}])[0].get("date", "")
+        game_date_str = ""
+
+        if raw_event_date:
+            try:
+                utc_dt = datetime.fromisoformat(raw_event_date.replace("Z", "+00:00"))
+                pht_dt = utc_dt.astimezone(PH_TZ)
+                game_date_str = pht_dt.strftime("%Y-%m-%d")
+            except Exception:
+                game_date_str = ""
 
         home_team_id = str(home_comp.get("team", {}).get("id", ""))
         away_team_id = str(away_comp.get("team", {}).get("id", ""))
@@ -351,6 +364,7 @@ async def get_game_detail(game_id: str):
                     pos = athlete.get("position", {})
                     pos_abbr = pos.get("abbreviation", "") if isinstance(pos, dict) else ""
                     minutes = stats_list[keys.index("minutes")] if "minutes" in keys else "0"
+
                     players.append({
                         "playerId": str(athlete.get("id", "")),
                         "name": athlete.get("shortName", athlete.get("displayName", "")),
@@ -430,6 +444,7 @@ async def get_game_detail(game_id: str):
             "isLive": is_live,
             "isHalftime": is_halftime,
             "statusText": status_detail,
+            "date": game_date_str,  # ✅ ADDED
             "period": status.get("period", 0),
             "gameClock": status.get("displayClock", ""),
             "homeTeam": {
@@ -452,7 +467,38 @@ async def get_game_detail(game_id: str):
             },
             "winProbability": {"home": hp, "away": ap},
         }
+        
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    # ── Game Highlights (Supabase) ───────────────────────────────
+
+@router.get("/{game_id}/highlights")
+async def get_highlights(game_id: str):
+    try:
+        sb = get_supabase()
+        res = (
+            sb.table("game_highlights")
+            .select("youtube_url")
+            .eq("game_id", game_id)
+            .single()
+            .execute()
+        )
+        return {"youtube_url": res.data["youtube_url"] if res.data else None}
+    except Exception:
+        return {"youtube_url": None}
+
+
+@router.post("/{game_id}/highlights")
+async def save_highlights(game_id: str, body: dict):
+    try:
+        sb = get_supabase()
+        sb.table("game_highlights").upsert({
+            "game_id": game_id,
+            "youtube_url": body.get("youtube_url")
+        }).execute()
+
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
