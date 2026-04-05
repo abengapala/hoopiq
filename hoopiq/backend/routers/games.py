@@ -129,13 +129,19 @@ async def get_today_games():
             if is_live or is_final:
                 game_time = status_detail or ("Live" if is_live else "Final")
             else:
+                # PHT game time
                 raw_date = event.get("date", "")
+                game_time = "TBD"
                 if raw_date:
                     try:
                         utc_dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
                         pht_dt = utc_dt.astimezone(PH_TZ)
-                        game_time = pht_dt.strftime("%-m/%-d · %-I:%M %p PHT")
+                        hour = pht_dt.strftime("%I").lstrip("0") or "12"
+                        minute = pht_dt.strftime("%M")
+                        ampm = pht_dt.strftime("%p")
+                        game_time = f"{hour}:{minute} {ampm} PHT"
                     except Exception:
+                        pass
                         game_time = status_detail or "TBD"
                 else:
                     game_time = status_detail or "TBD"
@@ -203,57 +209,70 @@ async def get_today_games():
 
 @router.get("/upcoming")
 async def get_upcoming_games(days: int = 7):
-    # ── Cache check ──────────────────────────────────────────
     cached = get_cached_upcoming(days)
     if cached:
         return cached
 
     try:
         upcoming = []
+        seen_game_ids = set()
         async with httpx.AsyncClient(timeout=30.0) as client:
             for i in range(1, days + 1):
-                target = datetime.now(PH_TZ) + timedelta(days=i)
-                date_str = target.strftime("%Y%m%d")
-                resp = await client.get(f"{ESPN_BASE}/scoreboard", params={"dates": date_str})
-                if resp.status_code != 200:
-                    continue
-                for event in resp.json().get("events", []):
-                    competition = event.get("competitions", [{}])[0]
-                    competitors = competition.get("competitors", [])
-                    home = next((c for c in competitors if c.get("homeAway") == "home"), {})
-                    away = next((c for c in competitors if c.get("homeAway") == "away"), {})
-                    home_team = home.get("team", {})
-                    away_team = away.get("team", {})
+                target_pht = datetime.now(PH_TZ) + timedelta(days=i)
+                utc_dates = [
+                    (datetime.now(timezone.utc) + timedelta(days=i - 1)).strftime("%Y%m%d"),
+                    (datetime.now(timezone.utc) + timedelta(days=i)).strftime("%Y%m%d"),
+                ]
+                for date_str in utc_dates:
+                    resp = await client.get(f"{ESPN_BASE}/scoreboard", params={"dates": date_str})
+                    if resp.status_code != 200:
+                        continue
+                    for event in resp.json().get("events", []):
+                        game_id = event.get("id")
+                        if game_id in seen_game_ids:
+                            continue
 
-                    # PHT game time
-                    raw_date = event.get("date", "")
-                    game_time = "TBD"
-                    if raw_date:
-                        try:
-                            utc_dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
-                            pht_dt = utc_dt.astimezone(PH_TZ)
-                            game_time = pht_dt.strftime("%-I:%M %p PHT")
-                        except Exception:
-                            pass
+                        raw_date = event.get("date", "")
+                        game_time = "TBD"
+                        game_date_pht = target_pht
 
-                    upcoming.append({
-                        "gameId": event.get("id"),
-                        "date": target.strftime("%Y-%m-%d"),
-                        "dateLabel": target.strftime("%A, %b %d"),
-                        "matchup": f"{away_team.get('abbreviation','')} @ {home_team.get('abbreviation','')}",
-                        "homeTeam": home_team.get("abbreviation", ""),
-                        "awayTeam": away_team.get("abbreviation", ""),
-                        "homeTeamId": home_team.get("id"),
-                        "awayTeamId": away_team.get("id"),
-                        "gameTime": game_time,
-                        "venue": competition.get("venue", {}).get("fullName", ""),
-                    })
+                        if raw_date:
+                            try:
+                                utc_dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                                game_date_pht = utc_dt.astimezone(PH_TZ)
+                                hour = game_date_pht.strftime("%I").lstrip("0") or "12"
+                                minute = game_date_pht.strftime("%M")
+                                ampm = game_date_pht.strftime("%p")
+                                game_time = f"{hour}:{minute} {ampm} PHT"
+                            except Exception:
+                                pass
+
+                        if game_date_pht.strftime("%Y-%m-%d") != target_pht.strftime("%Y-%m-%d"):
+                            continue
+
+                        seen_game_ids.add(game_id)
+                        competition = event.get("competitions", [{}])[0]
+                        competitors = competition.get("competitors", [])
+                        home = next((c for c in competitors if c.get("homeAway") == "home"), {})
+                        away = next((c for c in competitors if c.get("homeAway") == "away"), {})
+                        home_team = home.get("team", {})
+                        away_team = away.get("team", {})
+
+                        upcoming.append({
+                            "gameId": game_id,
+                            "date": game_date_pht.strftime("%Y-%m-%d"),
+                            "dateLabel": game_date_pht.strftime("%A, %b %d"),
+                            "matchup": f"{away_team.get('abbreviation','')} @ {home_team.get('abbreviation','')}",
+                            "homeTeam": home_team.get("abbreviation", ""),
+                            "awayTeam": away_team.get("abbreviation", ""),
+                            "homeTeamId": home_team.get("id"),
+                            "awayTeamId": away_team.get("id"),
+                            "gameTime": game_time,
+                            "venue": competition.get("venue", {}).get("fullName", ""),
+                        })
 
         payload = {"games": upcoming, "count": len(upcoming)}
-
-        # ── Write to cache ────────────────────────────────────
         set_cached_upcoming(days, payload)
-
         return payload
     except HTTPException:
         raise

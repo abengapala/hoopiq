@@ -7,6 +7,7 @@ TTLs:
   - standings         → 60 minutes
   - injuries          → 30 minutes
   - ai_analysis       → forever (keyed by game_id)
+  - achievements      → forever (keyed by player_id)
 """
 
 from datetime import datetime, timezone, timedelta
@@ -173,5 +174,33 @@ def set_cached_analysis(game_id: str, analysis: str):
             "analysis": analysis,
             "created_at": _now().isoformat(),
         }, on_conflict="game_id").execute()
+    except Exception:
+        pass
+
+
+# ══════════════════════════════════════════════════════════════
+#  ACHIEVEMENTS CACHE  (permanent — keyed by player_id)
+# ══════════════════════════════════════════════════════════════
+
+def get_cached_achievements(player_id: str) -> list | None:
+    """Returns cached achievements list or None if not cached yet."""
+    try:
+        sb = get_supabase()
+        res = sb.table("cache_achievements").select("achievements").eq("player_id", player_id).maybe_single().execute()
+        if res.data:
+            return json.loads(res.data["achievements"])
+        return None
+    except Exception:
+        return None
+
+def set_cached_achievements(player_id: str, achievements: list):
+    """Permanently stores achievements for a player — never expires."""
+    try:
+        sb = get_supabase()
+        sb.table("cache_achievements").upsert({
+            "player_id": player_id,
+            "achievements": json.dumps(achievements),
+            "created_at": _now().isoformat(),
+        }, on_conflict="player_id").execute()
     except Exception:
         pass

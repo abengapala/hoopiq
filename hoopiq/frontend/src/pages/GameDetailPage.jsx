@@ -40,6 +40,153 @@ function toPhilippineTime(rawText) {
   return rawText
 }
 
+// ── Countdown ─────────────────────────────────────────────────
+function getTimeLeft(isoTime) {
+  if (!isoTime) return null
+  const diff = new Date(isoTime) - Date.now()
+  if (diff <= 0) return null
+  const totalSecs = Math.floor(diff / 1000)
+  return {
+    days:    Math.floor(totalSecs / 86400),
+    hours:   Math.floor((totalSecs % 86400) / 3600),
+    minutes: Math.floor((totalSecs % 3600) / 60),
+    seconds: totalSecs % 60,
+    total:   diff,
+  }
+}
+
+function useCountdown(isoTime) {
+  const [timeLeft, setTimeLeft] = useState(() => getTimeLeft(isoTime))
+  useEffect(() => {
+    if (!isoTime) return
+    const id = setInterval(() => setTimeLeft(getTimeLeft(isoTime)), 1000)
+    return () => clearInterval(id)
+  }, [isoTime])
+  return timeLeft
+}
+
+function BouncingBall({ color = '#f97316', size = 16 }) {
+  return (
+    <>
+      <span style={{ display: 'inline-block', animation: 'bbBounce 0.6s ease-in-out infinite alternate', lineHeight: 1 }}>
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" fill={color} />
+          <path d="M12 2 Q16 6 16 12 Q16 18 12 22" stroke="rgba(0,0,0,0.25)" strokeWidth="1.2" fill="none"/>
+          <path d="M12 2 Q8 6 8 12 Q8 18 12 22"  stroke="rgba(0,0,0,0.25)" strokeWidth="1.2" fill="none"/>
+          <line x1="2" y1="12" x2="22" y2="12" stroke="rgba(0,0,0,0.25)" strokeWidth="1.2"/>
+        </svg>
+      </span>
+      <style>{`
+        @keyframes bbBounce {
+          from { transform: translateY(0px); }
+          to   { transform: translateY(-5px); }
+        }
+        @keyframes colonBlink {
+          0%, 100% { opacity: 0.5; }
+          50%       { opacity: 0.1; }
+        }
+      `}</style>
+    </>
+  )
+}
+
+function GameCountdown({ isoTime, awayColor, homeColor }) {
+  const t = useCountdown(isoTime)
+  const pad = n => String(n).padStart(2, '0')
+
+  if (!t) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '16px 0 4px' }}>
+        <BouncingBall color="#22c55e" size={16} />
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#22c55e', letterSpacing: '0.1em' }}>
+          STARTING SOON
+        </span>
+      </div>
+    )
+  }
+
+  const isImminent = t.total < 3600000
+  const isToday    = t.days === 0
+  const accent     = isImminent ? '#22c55e' : isToday ? '#f97316' : 'var(--accent)'
+  const ballColor  = isImminent ? '#22c55e' : '#f97316'
+
+  const segments = t.days > 0
+    ? [
+        { val: t.days,    label: t.days === 1 ? 'DAY' : 'DAYS' },
+        { val: t.hours,   label: 'HRS' },
+        { val: t.minutes, label: 'MIN' },
+      ]
+    : [
+        { val: t.hours,   label: 'HRS' },
+        { val: t.minutes, label: 'MIN' },
+        { val: t.seconds, label: 'SEC' },
+      ]
+
+  return (
+    <div style={{ padding: '16px 0 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      {/* Label row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <BouncingBall color={ballColor} size={14} />
+        <span style={{
+          fontSize: 11, fontWeight: 700, letterSpacing: '0.12em',
+          color: accent, textTransform: 'uppercase',
+        }}>
+          {isImminent ? 'Tip-off soon!' : isToday ? 'Tip-off today' : 'Tip-off in'}
+        </span>
+      </div>
+
+      {/* Digit blocks */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {segments.map((seg, i) => (
+          <div key={seg.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              background: `${accent}14`,
+              border: `1px solid ${accent}30`,
+              borderRadius: 10,
+              padding: '8px 14px',
+              minWidth: 52,
+              boxShadow: `0 2px 12px ${accent}18`,
+            }}>
+              <span style={{
+                fontFamily: 'DM Mono, monospace',
+                fontSize: 28, fontWeight: 700,
+                color: accent,
+                lineHeight: 1,
+                letterSpacing: '0.02em',
+              }}>
+                {pad(seg.val)}
+              </span>
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
+                color: accent, opacity: 0.65, marginTop: 4,
+              }}>
+                {seg.label}
+              </span>
+            </div>
+            {i < segments.length - 1 && (
+              <span style={{
+                fontSize: 22, fontWeight: 800,
+                color: accent, opacity: 0.4,
+                animation: 'colonBlink 1s step-start infinite',
+                marginBottom: 14,
+              }}>:</span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Dual-color thin bar under countdown */}
+      <div style={{
+        width: '60%', height: 2, borderRadius: 2, marginTop: 4,
+        background: `linear-gradient(90deg, ${awayColor}, ${homeColor})`,
+        opacity: 0.4,
+      }} />
+    </div>
+  )
+}
+
+// ── Compare Row ───────────────────────────────────────────────
 function CompareRow({ label, homeVal, awayVal, format = v => v, higherIsBetter = true }) {
   const hv = parseFloat(homeVal) || 0
   const av = parseFloat(awayVal) || 0
@@ -64,6 +211,7 @@ function CompareRow({ label, homeVal, awayVal, format = v => v, higherIsBetter =
   )
 }
 
+// ── Roster Table ──────────────────────────────────────────────
 function RosterTable({ players, onPlayerClick, isGameLive, injuries }) {
   if (!players || players.length === 0) {
     return (
@@ -177,19 +325,17 @@ function RosterTable({ players, onPlayerClick, isGameLive, injuries }) {
   )
 }
 
-// ── YouTube Highlights Section ────────────────────────────────────────────────
-
+// ── YouTube Highlights ────────────────────────────────────────
 function YouTubeHighlights({ gameId, homeTeam, awayTeam, homeScore, awayScore, dateText, isLive }) {
-  const [videoUrl, setVideoUrl]     = useState(null)
-  const [input, setInput]           = useState('')
-  const [editing, setEditing]       = useState(false)
-  const [saving, setSaving]         = useState(false)
-  const [loaded, setLoaded]         = useState(false)
+  const [videoUrl, setVideoUrl]         = useState(null)
+  const [input, setInput]               = useState('')
+  const [editing, setEditing]           = useState(false)
+  const [saving, setSaving]             = useState(false)
+  const [loaded, setLoaded]             = useState(false)
   const [adminVisible, setAdminVisible] = useState(false)
   const clickCount = useRef(0)
   const clickTimer = useRef(null)
 
-  // Secret: click the section title 5 times fast to reveal admin controls
   function handleTitleClick() {
     clickCount.current += 1
     clearTimeout(clickTimer.current)
@@ -201,7 +347,6 @@ function YouTubeHighlights({ gameId, homeTeam, awayTeam, homeScore, awayScore, d
     }
   }
 
-  // Build readable date — dateText is "YYYY-MM-DD" from backend
   let date = new Date()
   if (dateText) {
     const parsed = new Date(dateText + 'T12:00:00')
@@ -235,49 +380,36 @@ function YouTubeHighlights({ gameId, homeTeam, awayTeam, homeScore, awayScore, d
       .finally(() => setLoaded(true))
   }, [gameId])
 
-async function handleSave() {
-  if (!input.trim()) return
-  setSaving(true)
-  try {
-    await api.saveHighlights(gameId, input.trim())
-    setVideoUrl(input.trim())
-    setEditing(false)
-    setInput('')
-  } catch (_) {}
-  setSaving(false)
-}
+  async function handleSave() {
+    if (!input.trim()) return
+    setSaving(true)
+    try {
+      await api.saveHighlights(gameId, input.trim())
+      setVideoUrl(input.trim())
+      setEditing(false)
+      setInput('')
+    } catch (_) {}
+    setSaving(false)
+  }
 
   if (!loaded) return null
 
   return (
     <div style={{ marginBottom: 20 }}>
-
-      {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-
-        {/* Click 5x fast to unlock admin */}
         <div onClick={handleTitleClick} style={{ cursor: 'default', userSelect: 'none' }}>
           <SectionHeader title={isLive ? '🔴 Live Stream' : 'Game Highlights'} />
         </div>
-
-        {/* Admin button — hidden until 5 clicks */}
         {adminVisible && (
           <button
             onClick={() => { setEditing(v => !v); setInput(videoUrl || '') }}
-            style={{
-              padding: '6px 12px', borderRadius: 6,
-              border: '1px solid var(--border)',
-              background: 'var(--bg3)', color: 'var(--text3)',
-              fontSize: 11, fontFamily: 'DM Mono, monospace',
-              cursor: 'pointer',
-            }}
+            style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text3)', fontSize: 11, fontFamily: 'DM Mono, monospace', cursor: 'pointer' }}
           >
             {videoUrl ? '✏️ Change link' : '+ Add link'}
           </button>
         )}
       </div>
 
-      {/* Paste input — only for admin */}
       {adminVisible && editing && (
         <div className="card" style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center', padding: '12px 16px', flexWrap: 'wrap' }}>
           <input
@@ -286,52 +418,23 @@ async function handleSave() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSave()}
-            style={{
-              flex: 1, minWidth: 200,
-              padding: '8px 12px', borderRadius: 6,
-              border: '1px solid var(--border)',
-              background: 'var(--bg2)', color: 'var(--text)',
-              fontSize: 12, fontFamily: 'DM Mono, monospace',
-              outline: 'none',
-            }}
+            style={{ flex: 1, minWidth: 200, padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: 12, fontFamily: 'DM Mono, monospace', outline: 'none' }}
           />
-          <button
-            onClick={handleSave}
-            disabled={saving || !input.trim()}
-            style={{
-              padding: '8px 16px', borderRadius: 6,
-              border: 'none', background: '#ff0000',
-              color: '#fff', fontSize: 12, fontWeight: 700,
-              cursor: saving ? 'wait' : 'pointer',
-              opacity: (!input.trim() || saving) ? 0.5 : 1,
-            }}
-          >
+          <button onClick={handleSave} disabled={saving || !input.trim()} style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: '#ff0000', color: '#fff', fontSize: 12, fontWeight: 700, cursor: saving ? 'wait' : 'pointer', opacity: (!input.trim() || saving) ? 0.5 : 1 }}>
             {saving ? 'Saving...' : 'Save'}
           </button>
-          <button
-            onClick={() => setEditing(false)}
-            style={{
-              padding: '8px 12px', borderRadius: 6,
-              border: '1px solid var(--border)',
-              background: 'transparent', color: 'var(--text3)',
-              fontSize: 12, cursor: 'pointer',
-            }}
-          >
+          <button onClick={() => setEditing(false)} style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text3)', fontSize: 12, cursor: 'pointer' }}>
             Cancel
           </button>
         </div>
       )}
 
-      {/* Video embed */}
       {embedUrl ? (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          {/* Live banner — only on live games */}
           {isLive && (
             <div style={{ padding: '8px 16px', background: '#ff000018', borderBottom: '1px solid #ff000030', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ff0000', display: 'inline-block' }} />
-              <span style={{ fontSize: 11, color: '#ff0000', fontFamily: 'DM Mono, monospace', fontWeight: 700, letterSpacing: '0.06em' }}>
-                LIVE NOW
-              </span>
+              <span style={{ fontSize: 11, color: '#ff0000', fontFamily: 'DM Mono, monospace', fontWeight: 700, letterSpacing: '0.06em' }}>LIVE NOW</span>
             </div>
           )}
           <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0 }}>
@@ -353,7 +456,6 @@ async function handleSave() {
           </div>
         </div>
       ) : (
-        // No video yet — show placeholder only (no text telling users to add a link)
         !editing && (
           <div className="card" style={{ padding: '28px 0', textAlign: 'center', color: 'var(--text3)', fontSize: 13, fontFamily: 'DM Mono, monospace' }}>
             {isLive ? 'Live stream coming soon.' : 'Highlights coming soon.'}
@@ -364,8 +466,7 @@ async function handleSave() {
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
-
+// ── Main Page ─────────────────────────────────────────────────
 export default function GameDetailPage() {
   const { gameId } = useParams()
   const navigate = useNavigate()
@@ -387,12 +488,13 @@ export default function GameDetailPage() {
 
   const isLive     = data.status === '2' || data.status === 2
   const isFinal    = data.status === '3' || data.status === 3
+  const isScheduled = !isLive && !isFinal
   const isGameLive = isLive || isFinal
 
   const hasStats = isGameLive && Object.values(hs).some(v => v > 0)
 
-  const homePlayers  = home.players || []
-  const awayPlayers  = away.players || []
+  const homePlayers   = home.players || []
+  const awayPlayers   = away.players || []
   const rosterPlayers = rosterTab === 'home' ? homePlayers : awayPlayers
 
   const homeScore   = home.score ?? 0
@@ -417,6 +519,9 @@ export default function GameDetailPage() {
   const homeLogo = getLogoUrl(homeAbbr)
   const awayLogo = getLogoUrl(awayAbbr)
 
+  // ISO tip-off time for countdown — backend may send data.startTime or data.isoDate
+  const tipoffIso = data.startTime || data.isoDate || data.date || null
+
   const tabStyle = (active) => ({
     padding: '6px 12px', borderRadius: 6,
     border: '1px solid var(--border)',
@@ -437,7 +542,7 @@ export default function GameDetailPage() {
         Back
       </button>
 
-      {/* ── Match Hero ─────────────────────────────────────────────────────── */}
+      {/* ── Match Hero ─────────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: 16, padding: 'clamp(16px, 4vw, 28px) clamp(16px, 4vw, 32px)', overflow: 'hidden', position: 'relative' }}>
 
         {/* Aura logos */}
@@ -486,7 +591,7 @@ export default function GameDetailPage() {
             )}
           </div>
 
-          {/* VS */}
+          {/* VS / Score center */}
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, color: 'var(--text3)', letterSpacing: '0.08em' }}>VS</div>
           </div>
@@ -512,8 +617,20 @@ export default function GameDetailPage() {
           </div>
         </div>
 
+        {/* ── Countdown — only for scheduled games ── */}
+        {isScheduled && tipoffIso && (
+          <>
+            <div style={{ borderTop: '1px solid var(--border)', marginBottom: 0 }} />
+            <GameCountdown
+              isoTime={tipoffIso}
+              awayColor={awayColor}
+              homeColor={homeColor}
+            />
+          </>
+        )}
+
         {/* Win probability */}
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', marginTop: isScheduled ? 16 : 0 }}>
           <div style={{ textAlign: 'center', marginBottom: 8 }}>
             <span className="label" style={{ fontSize: 10 }}>Win Probability</span>
           </div>
@@ -521,7 +638,7 @@ export default function GameDetailPage() {
         </div>
       </div>
 
-      {/* ── YouTube Highlights — shows on LIVE and FINAL games ───────────── */}
+      {/* YouTube Highlights — live and final only */}
       {(isLive || isFinal) && (
         <YouTubeHighlights
           gameId={gameId}

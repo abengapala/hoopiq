@@ -77,11 +77,25 @@ def extract_athlete(data: dict) -> dict:
     return {}
 
 
-async def fetch_achievements_from_groq(player_name: str, team: str, position: str, experience: str) -> list:
-    """Use Groq to return real NBA achievements for a player as structured JSON."""
+async def fetch_achievements_from_groq(player_id: str, player_name: str, team: str, position: str, experience: str) -> list:
+    """
+    Returns achievements for a player.
+    Checks Supabase cache first — if found, returns instantly.
+    On cache miss, calls Groq, stores result permanently, returns it.
+    Empty results are NEVER cached so we always retry on the next visit.
+    """
+    from cache import get_cached_achievements, set_cached_achievements
+
+    # ── 1. Cache hit → return immediately, no Groq call ──────────────────────
+    cached = get_cached_achievements(player_id)
+    if cached is not None:
+        return cached
+
+    # ── 2. Cache miss → call Groq ─────────────────────────────────────────────
     key = get_groq_key()
     if not key or not player_name:
         return []
+
     prompt = (
         f"List the real NBA career achievements and awards for {player_name} "
         f"({position}, {team}, {experience} years experience). "
@@ -92,55 +106,72 @@ async def fetch_achievements_from_groq(player_name: str, team: str, position: st
         f"Respond ONLY with a raw JSON array. No markdown, no backticks, no explanation. "
         f'Example: [{{"name": "4x NBA Champion", "year": "2015, 2017, 2018, 2022"}}, {{"name": "2x NBA MVP", "year": "2015, 2016"}}]'
     )
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "llama-3.1-8b-instant",
-                    "max_tokens": 800,
-                    "temperature": 0.1,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": (
-                                "You are an NBA historian. Return only a valid raw JSON array of achievements. "
-                                "No markdown fences, no backticks, no extra text. Just the JSON array."
-                            )
-                        },
-                        {"role": "user", "content": prompt}
-                    ],
-                }
-            )
-        if resp.status_code != 200:
-            return []
-        content = resp.json()["choices"][0]["message"]["content"].strip()
-        # Strip any accidental markdown fences
-        if "```" in content:
-            parts = content.split("```")
-            for part in parts:
-                part = part.strip()
-                if part.startswith("json"):
-                    part = part[4:].strip()
-                if part.startswith("["):
-                    content = part
-                    break
-        # Find JSON array boundaries
-        start = content.find("[")
-        end   = content.rfind("]")
-        if start != -1 and end != -1:
-            content = content[start:end+1]
-        achievements = json.loads(content)
-        if isinstance(achievements, list):
-            return achievements[:14]
-        return []
-    except Exception:
-        return []
 
+    for attempt in range(2):  # retry once on bad JSON
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "llama-3.1-8b-instant",
+                        "max_tokens": 800,
+                        "temperature": 0.1,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": (
+                                    "You are an NBA historian. Return ONLY a valid raw JSON array of achievements. "
+                                    "No markdown fences, no backticks, no extra text before or after. "
+                                    "Start your response with [ and end with ]. Nothing else."
+                                )
+                            },
+                            {"role": "user", "content": prompt}
+                        ],
+                    }
+                )
+
+            if resp.status_code != 200:
+                continue
+
+            content = resp.json()["choices"][0]["message"]["content"].strip()
+
+            # Strip accidental markdown fences
+            if "```" in content:
+                parts = content.split("```")
+                for part in parts:
+                    part = part.strip()
+                    if part.startswith("json"):
+                        part = part[4:].strip()
+                    if part.startswith("["):
+                        content = part
+                        break
+
+            # Find JSON array boundaries
+            start = content.find("[")
+            end   = content.rfind("]")
+            if start == -1 or end == -1:
+                continue  # retry
+
+            content      = content[start:end + 1]
+            achievements = json.loads(content)
+
+            if isinstance(achievements, list) and len(achievements) > 0:
+                result = achievements[:14]
+                # ── 3. Only cache non-empty results ───────────────────────────
+                set_cached_achievements(player_id, result)
+                return result
+
+        except json.JSONDecodeError:
+            continue  # retry on bad JSON
+        except Exception:
+            break
+
+    # Groq failed — return empty but DO NOT cache so we retry next visit
+    return []
 
 # ── 1. Stat leaders ──────────────────────────────────────────────────────────
 
@@ -420,7 +451,7 @@ async def get_player(player_id: str):
     exp_years    = str(exp.get("years", ""))
 
     # ── Groq achievements ─────────────────────────────────────────────────────
-    achievements = await fetch_achievements_from_groq(player_name, team_name, position_str, exp_years)
+    achievements = await fetch_achievements_from_groq(player_id, player_name, team_name, position_str, exp_years)
 
     return {
         "player": {

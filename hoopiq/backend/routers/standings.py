@@ -9,7 +9,6 @@ ESPN_BASE = "https://site.api.espn.com/apis/v2/sports/basketball/nba"
 
 @router.get("/")
 async def get_standings():
-    # ── Cache check ──────────────────────────────────────────
     cached = get_cached_standings()
     if cached:
         return cached
@@ -27,30 +26,34 @@ async def get_standings():
             conference = group.get("name", "")
             for team_entry in group.get("standings", {}).get("entries", []):
                 team = team_entry.get("team", {})
+
+                # Key by name — ESPN uses exact strings including spaces
                 stats = {
-                    s["name"]: s.get("displayValue", s.get("value", ""))
+                    s["name"]: s.get("displayValue", "")
                     for s in team_entry.get("stats", [])
                 }
 
-                wins = int(float(stats.get("wins", 0)))
+                wins   = int(float(stats.get("wins", 0)))
                 losses = int(float(stats.get("losses", 0)))
-                total = wins + losses
-                pct = round(wins / total, 3) if total > 0 else 0.0
+                total  = wins + losses
+                pct    = round(wins / total, 3) if total > 0 else 0.0
 
                 entry = {
-                    "teamId": team.get("id"),
-                    "teamName": team.get("shortDisplayName", team.get("displayName", "")),
-                    "teamCity": team.get("location", ""),
-                    "abbr": team.get("abbreviation", ""),
+                    "teamId":     team.get("id"),
+                    "teamName":   team.get("shortDisplayName", team.get("displayName", "")),
+                    "teamCity":   team.get("location", ""),
+                    "abbr":       team.get("abbreviation", ""),
                     "conference": "East" if "east" in conference.lower() else "West",
-                    "wins": wins,
-                    "losses": losses,
-                    "pct": pct,
-                    "gb": str(stats.get("gamesBehind", "—")),
-                    "homeRecord": str(stats.get("homeRecord", "")),
-                    "awayRecord": str(stats.get("awayRecord", "")),
-                    "last10": str(stats.get("lastTen", "")),
-                    "streak": str(stats.get("streak", "—")),
+                    "wins":       wins,
+                    "losses":     losses,
+                    "pct":        pct,
+                    "gb":         stats.get("gamesBehind", "—") or "—",
+                    # Correct ESPN key names confirmed from debug output:
+                    "homeRecord": stats.get("Home", "—") or "—",
+                    "awayRecord": stats.get("Road", "—") or "—",
+                    "last10":     stats.get("Last Ten Games", "—") or "—",
+                    # streak displayValue is already formatted: "W3", "L1"
+                    "streak":     stats.get("streak", "—") or "—",
                     "playoffSeed": int(float(stats.get("playoffSeed", 0))) if stats.get("playoffSeed") else None,
                 }
 
@@ -63,11 +66,9 @@ async def get_standings():
         west.sort(key=lambda x: (-x["wins"], x["losses"]))
 
         payload = {"east": east, "west": west}
-
-        # ── Write to cache ────────────────────────────────────
         set_cached_standings(payload)
-
         return payload
+
     except HTTPException:
         raise
     except Exception as e:
