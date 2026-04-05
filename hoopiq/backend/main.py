@@ -1,14 +1,28 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import uvicorn
 
 from routers import games, teams, players, injuries, news, predictions, rankings, chat, standings
 
+scheduler = AsyncIOScheduler()
+
+@scheduler.scheduled_job('interval', hours=24)
+async def keep_supabase_alive():
+    try:
+        from supabase_client import get_supabase
+        get_supabase().table('cache_misc').select('key').limit(1).execute()
+        print("✅ Supabase keep-alive ping sent")
+    except Exception as e:
+        print(f"⚠️ Supabase keep-alive failed: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("🏀 HoopIQ API starting up...")
+    scheduler.start()
     yield
+    scheduler.shutdown()
     print("HoopIQ API shutting down.")
 
 app = FastAPI(
@@ -48,7 +62,6 @@ async def root():
         "docs": "/docs"
     }
 
-# ✅ FIXED HEALTH ENDPOINT (supports GET + HEAD)
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health(request: Request):
     return {
